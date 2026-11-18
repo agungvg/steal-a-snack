@@ -72,6 +72,11 @@ local function makeButton(parent: Instance, name: string, position: UDim2, size:
 	return button
 end
 
+-- Current weather, top left: icon + name + the active boost, so the
+-- sky's effect is always readable without waiting for the banner.
+local weatherLabel = makeLabel(gui, "WeatherLabel", UDim2.new(0, 12, 0, 12), UDim2.fromOffset(280, 56), 20)
+weatherLabel.Text = "☀️ SUNNY\nNo boost — clear skies."
+
 -- Cash and income, top centre, clear of the Roblox menu buttons.
 local cashLabel = makeLabel(gui, "CashLabel", UDim2.new(0.5, -180, 0, 12), UDim2.fromOffset(360, 56), 34)
 local incomeLabel = makeLabel(gui, "IncomeLabel", UDim2.new(0.5, -180, 0, 72), UDim2.fromOffset(360, 34), 20)
@@ -194,6 +199,9 @@ local waveHideAt = 0
 GameSync.OnClientEvent:Connect(function(state: any)
 	cashLabel.Text = "CASH: $" .. tostring(state.cash)
 	incomeLabel.Text = "$" .. tostring(state.income) .. "/s  |  Rebirths: " .. tostring(state.rebirths) .. "  |  Income x" .. tostring(state.multiplier)
+	if state.weatherName and state.weatherName ~= "" then
+		weatherLabel.Text = (state.weatherIcon or "") .. " " .. string.upper(state.weatherName) .. "\n" .. (state.weatherBoost or "")
+	end
 	if state.lockRemaining > 0 then
 		lockButton.Text = "LOCKED: " .. tostring(math.ceil(state.lockRemaining)) .. "s"
 	elseif state.lockCooldown > 0 then
@@ -222,15 +230,22 @@ GameSync.OnClientEvent:Connect(function(state: any)
 end)
 
 WaveAlert.OnClientEvent:Connect(function(message: string)
-	-- A rare spawn is good news, not danger: gold banner, longer read.
-	if string.sub(message, 1, 11) == "RARE SPAWN!" then
+	-- A weather change is news, not danger: sky-blue banner, and the
+	-- "WEATHER: " prefix (the server's routing tag) stays off-screen.
+	if string.sub(message, 1, 8) == "WEATHER:" then
+		waveLabel.BackgroundColor3 = Color3.fromRGB(30, 120, 200)
+		waveLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		waveLabel.Text = string.sub(message, 10)
+	elseif string.sub(message, 1, 11) == "RARE SPAWN!" then
+		-- A rare spawn is good news, not danger: gold banner, longer read.
 		waveLabel.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
 		waveLabel.TextColor3 = Color3.fromRGB(30, 30, 30)
+		waveLabel.Text = message
 	else
 		waveLabel.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
 		waveLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		waveLabel.Text = message
 	end
-	waveLabel.Text = message
 	waveLabel.Visible = true
 	waveHideAt = os.clock() + 12
 end)

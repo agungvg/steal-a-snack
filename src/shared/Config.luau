@@ -43,6 +43,13 @@ Config.WAVE_PERIOD = 90
 Config.WAVE_WARN_SECONDS = 10
 Config.WAVE_DURATION = 10
 
+-- Weather: a rotating sky, Steal a Brainrot event style. The cycle
+-- length is rolled fresh each time (150-180s) so the rhythm never feels
+-- metronomic, and the sky tweens over a few seconds, never hard-cuts.
+Config.WEATHER_MIN_SECONDS = 150
+Config.WEATHER_MAX_SECONDS = 180
+Config.WEATHER_TRANSITION_SECONDS = 4
+
 Config.CONVEYOR_SPEED = 6
 Config.CONVEYOR_START_X = -64
 Config.CONVEYOR_END_X = 64
@@ -139,15 +146,20 @@ function Config.rollMutation(): Mutation
 	return Config.MUTATIONS[#Config.MUTATIONS]
 end
 
-function Config.rollRarity(): string
+-- Rolls a rarity from a weight table. `weights` defaults to the base
+-- table; the weather system passes its adjusted table (Rain lifts
+-- Rare+, Storm doubles Legendary/Mythic), so the boost is a real roll
+-- change, not a label. The roll is a float so fractional weights work.
+function Config.rollRarity(weights: { [string]: number }?): string
+	local w = weights or Config.SPAWN_WEIGHTS
 	local total = 0
-	for _, weight in pairs(Config.SPAWN_WEIGHTS) do
+	for _, weight in pairs(w) do
 		total += weight
 	end
-	local roll = math.random(total)
+	local roll = math.random() * total
 	local running = 0
 	for _, rarity in ipairs(Config.RARITY_ORDER) do
-		running += Config.SPAWN_WEIGHTS[rarity]
+		running += w[rarity] or 0
 		if roll <= running then
 			return rarity
 		end

@@ -1,14 +1,16 @@
 -- Steal a Snack: server entry point.
 -- Wires the services together: state, economy tick, conveyor, bases,
--- stealing, the Hunger Wave and rebirth, plus every RemoteEvent the
--- client HUD talks to. No game logic lives here, only wiring.
+-- stealing, the Hunger Wave, the rotating weather and rebirth, plus
+-- every RemoteEvent the client HUD talks to. No game logic lives here,
+-- only wiring.
 --
 -- Remote contract (client -> server; the server decides everything):
 --   LockBase (no args)        lock your base for 20s, 60s cooldown
 --   RequestRebirth (no args)  trade everything for +25% income
 -- Server -> client:
 --   GameSync (snapshot)       cash, income, owned, leaders, timers
---   WaveAlert (string)        Hunger Wave warnings and rare spawns
+--   WaveAlert (string)        Hunger Wave warnings, rare spawns and
+--                             weather changes (WEATHER: prefix)
 -- Buying and stealing run through the ClickDetectors on the 3D models;
 -- the server still validates each one (rate limit, range, state).
 
@@ -27,6 +29,7 @@ local Saves = require(script.Saves)
 local Spawner = require(script.Spawner)
 local Steal = require(script.Steal)
 local Wave = require(script.Wave)
+local Weather = require(script.Weather)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local GameSync = Remotes:WaitForChild("GameSync")
@@ -45,6 +48,10 @@ local function syncPlayer(player: Player, notice: string?)
 	snapshot.notice = notice or notices[player] or ""
 	snapshot.nextWaveIn = Wave.nextWaveIn
 	snapshot.waveActive = Wave.active
+	snapshot.weatherName = Weather.currentName
+	snapshot.weatherIcon = Weather.currentIcon
+	snapshot.weatherBoost = Weather.currentBoost
+	snapshot.nextWeatherIn = Weather.nextChangeIn
 	GameSync:FireClient(player, snapshot)
 end
 
@@ -141,6 +148,7 @@ Economy.start(State, syncPlayer)
 Spawner.start()
 Bases.start()
 Wave.start(State, Bases, Spawner, alertAll)
+Weather.start(alertAll)
 Saves.start(State)
 
 -- Keep every base's lock dome and name label in step with its lock

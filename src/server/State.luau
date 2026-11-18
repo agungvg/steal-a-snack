@@ -8,6 +8,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Leaderboard = require(script.Parent.Leaderboard)
+local Weather = require(script.Parent.Weather)
 
 local State = {}
 
@@ -68,7 +69,8 @@ function State.computeIncome(data: PlayerData): number
 	for _, entry in ipairs(data.owned) do
 		total += entry.rate * entry.multiplier
 	end
-	return total * Config.incomeMultiplier(data.rebirths)
+	-- Snow pays a winter bonus on everything the bases earn.
+	return total * Config.incomeMultiplier(data.rebirths) * Weather.incomeMultiplier()
 end
 
 function State.addOwned(data: PlayerData, entry: OwnedEntry)
@@ -137,6 +139,10 @@ export type Snapshot = {
 	notice: string?,
 	nextWaveIn: number?,
 	waveActive: boolean?,
+	weatherName: string?,
+	weatherIcon: string?,
+	weatherBoost: string?,
+	nextWeatherIn: number?,
 }
 
 -- A plain-data snapshot for the client HUD. No instances, no functions,

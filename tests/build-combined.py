@@ -3,11 +3,12 @@
 
 The luau CLI's require() runs each module in an isolated environment, so
 the mock Roblox API cannot be injected as globals through require().
-Instead this script wraps each module (mock, Config, CharacterFactory)
-in a function -- its `return X` becomes that function's return value --
-and concatenates them with the harness body, so everything shares ONE
-global environment (exactly like Roblox, where Instance/Color3/etc. are
-globals). Output: tests/_combined.luau (generated, do not edit).
+Instead this script wraps each module (mock, Config, CharacterFactory,
+Weather) in a function -- its `return X` becomes that function's return
+value -- and concatenates them with the harness body, so everything
+shares ONE global environment (exactly like Roblox, where
+Instance/Color3/etc. are globals). Output: tests/_combined.luau
+(generated, do not edit).
 """
 import pathlib
 
@@ -25,13 +26,40 @@ out.append("""
 Instance = Mock.Instance
 Color3 = Mock.Color3
 Vector3 = Mock.Vector3
+Vector2 = Mock.Vector2
 CFrame = Mock.CFrame
 UDim2 = Mock.UDim2
 Enum = Mock.Enum
 task = Mock.task
+game = Mock.game
+TweenInfo = Mock.TweenInfo
+NumberRange = Mock.NumberRange
+NumberSequence = Mock.NumberSequence
+NumberSequenceKeypoint = Mock.NumberSequenceKeypoint
+ColorSequence = Mock.ColorSequence
+ColorSequenceKeypoint = Mock.ColorSequenceKeypoint
 """)
 out.append(wrap("config", "src/shared/Config.luau", "Config"))
+out.append("""
+-- Weather requires Config through ReplicatedStorage, the way the real
+-- server does. Plant the already-loaded Config module in the mock
+-- tree and teach require() to hand it back for that one ModuleScript.
+local _shared = Instance.new("Folder")
+_shared.Name = "Shared"
+_shared.Parent = Mock.ReplicatedStorage
+local _configMod = Instance.new("ModuleScript")
+_configMod.Name = "Config"
+_configMod.Parent = _shared
+local _realRequire = require
+require = function(target)
+	if target == _configMod then
+		return Config
+	end
+	return _realRequire(target)
+end
+""")
 out.append(wrap("factory", "src/server/CharacterFactory.luau", "CharacterFactory"))
+out.append(wrap("weather", "src/server/Weather.luau", "Weather"))
 # Harness body: everything from the "local GROUND" marker onward.
 harness = (root / "tests/verify-characters.luau").read_text()
 marker = "local GROUND"

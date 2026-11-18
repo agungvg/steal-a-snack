@@ -146,8 +146,11 @@ Mock.Enum = {
 	Material = {
 		SmoothPlastic = "SmoothPlastic", Neon = "Neon", Glass = "Glass",
 		Fabric = "Fabric", Wood = "Wood", Metal = "Metal", Grass = "Grass",
-		Slate = "Slate", Concrete = "Concrete", Sand = "Sand",
+		Slate = "Slate", Concrete = "Concrete", Sand = "Sand", Snow = "Snow",
 	},
+	EasingStyle = { Linear = "Linear", Quad = "Quad", Cubic = "Cubic" },
+	EasingDirection = { In = "In", Out = "Out", InOut = "InOut" },
+	NormalId = { Top = "Top", Bottom = "Bottom", Front = "Front", Back = "Back", Left = "Left", Right = "Right" },
 	Font = { FredokaOne = "FredokaOne", GothamBold = "GothamBold", Gotham = "Gotham" },
 	TextXAlignment = { Center = "Center", Left = "Left", Right = "Right" },
 	TextYAlignment = { Center = "Center", Top = "Top", Bottom = "Bottom" },
@@ -181,6 +184,30 @@ local function makeInstance(className)
 					if c.Name == name then return c end
 				end
 				return nil
+			end
+		elseif k == "WaitForChild" then
+			-- In the harness the tree is already built, so this is a
+			-- plain lookup; a missing child is a test bug, fail loudly.
+			return function(self, name)
+				for _, c in ipairs(self._children) do
+					if c.Name == name then return c end
+				end
+				error("mock WaitForChild: " .. tostring(name) .. " not found")
+			end
+		elseif k == "IsA" then
+			return function(self, className)
+				if self.ClassName == className then
+					return true
+				end
+				-- Part-family classes are all BaseParts in real Roblox.
+				if className == "BasePart" then
+					return self.ClassName == "Part" or self.ClassName == "SpawnLocation"
+						or self.ClassName == "MeshPart" or self.ClassName == "UnionOperation"
+				end
+				if className == "Instance" then
+					return true
+				end
+				return false
 			end
 		elseif k == "GetDescendants" then
 			return function(self)
@@ -245,5 +272,107 @@ Mock.task = {
 -- ---------- workspace (a plain Instance the harness can parent to) ----------
 Mock.Workspace = makeInstance("Workspace")
 Mock.Workspace.Name = "Workspace"
+
+-- ---------- value types the weather system uses ----------
+Mock.Vector2 = {
+	new = function(x, y)
+		return { X = x or 0, Y = y or 0 }
+	end,
+}
+
+Mock.NumberRange = {
+	new = function(min, max)
+		return { Min = min, Max = max or min }
+	end,
+}
+
+Mock.NumberSequenceKeypoint = {
+	new = function(time, value, envelope)
+		return { Time = time, Value = value, Envelope = envelope or 0 }
+	end,
+}
+
+Mock.NumberSequence = {
+	new = function(a, b)
+		if type(a) == "number" then
+			return { Keypoints = { { Time = 0, Value = a, Envelope = 0 }, { Time = 1, Value = b or a, Envelope = 0 } } }
+		end
+		return { Keypoints = a }
+	end,
+}
+
+Mock.ColorSequenceKeypoint = {
+	new = function(time, color)
+		return { Time = time, Value = color }
+	end,
+}
+
+Mock.ColorSequence = {
+	new = function(a, b)
+		if type(a) == "table" and a.R ~= nil then
+			return { Keypoints = { { Time = 0, Value = a }, { Time = 1, Value = b or a } } }
+		end
+		return { Keypoints = a }
+	end,
+}
+
+-- TweenService mock: a tween applies its goal properties at once, so
+-- the harness can assert the sky a weather change lands on without
+-- waiting out a 4-second transition.
+Mock.TweenInfo = {
+	new = function(time, easingStyle, easingDirection)
+		return { Time = time or 1, EasingStyle = easingStyle, EasingDirection = easingDirection }
+	end,
+}
+
+Mock.TweenService = {
+	Create = function(_self, inst, _info, props)
+		return {
+			Play = function()
+				for k, v in pairs(props) do
+					inst[k] = v
+				end
+			end,
+		}
+	end,
+}
+
+-- ---------- game services ----------
+-- Lighting mirrors the place file's sunny defaults; the Atmosphere
+-- child mirrors default.project.json. ReplicatedStorage is an empty
+-- tree the combined script fills with the real Config module.
+local Lighting = makeInstance("Lighting")
+Lighting.Brightness = 2.5
+Lighting.ClockTime = 14
+Lighting.FogColor = Color3.fromRGB(178, 216, 255)
+Lighting.FogEnd = 420
+Lighting.Ambient = Color3.fromRGB(51, 51, 51)
+Lighting.OutdoorAmbient = Color3.fromRGB(102, 102, 115)
+local Atmosphere = makeInstance("Atmosphere")
+Atmosphere.Color = Color3.fromRGB(191, 216, 255)
+Atmosphere.Decay = Color3.fromRGB(102, 128, 178)
+Atmosphere.Density = 0.25
+Atmosphere.Glare = 0.3
+Atmosphere.Haze = 1.5
+Atmosphere.Offset = 0.2
+Atmosphere.Parent = Lighting
+local ReplicatedStorage = makeInstance("ReplicatedStorage")
+
+Mock.Lighting = Lighting
+Mock.ReplicatedStorage = ReplicatedStorage
+Mock.game = {
+	GetService = function(_self, name)
+		if name == "Lighting" then
+			return Lighting
+		elseif name == "TweenService" then
+			return Mock.TweenService
+		elseif name == "Workspace" then
+			return Mock.Workspace
+		elseif name == "ReplicatedStorage" then
+			return ReplicatedStorage
+		end
+		error("mock game has no service " .. tostring(name))
+	end,
+}
 
 return Mock

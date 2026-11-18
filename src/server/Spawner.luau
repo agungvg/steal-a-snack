@@ -15,6 +15,7 @@ local Bases = require(script.Parent.Bases)
 local CharacterFactory = require(script.Parent.CharacterFactory)
 local Effects = require(script.Parent.Effects)
 local RateLimit = require(script.Parent.RateLimit)
+local Weather = require(script.Parent.Weather)
 
 local Spawner = {}
 
@@ -42,7 +43,9 @@ local function nextUid(): string
 end
 
 local function rollBrainrot(): (Config.Brainrot, Config.Mutation)
-	local rarity = Config.rollRarity()
+	-- The sky rolls with us: Rain lifts Rare+, Storm doubles the
+	-- Legendary/Mythic weight, every other sky uses the base table.
+	local rarity = Config.rollRarity(Weather.adjustedWeights())
 	local pool = Config.getByRarity(rarity)
 	local pick = pool[math.random(1, #pool)]
 	local mutation = Config.rollMutation()
@@ -234,7 +237,9 @@ function Spawner.start()
 			last = now
 			for index = #walkers, 1, -1 do
 				local walker = walkers[index]
-				walker.x += Config.CONVEYOR_SPEED * dt
+				-- Fog slows the whole belt to 75% speed, so the rare
+				-- ones are easier to catch before they walk away.
+				walker.x += Config.CONVEYOR_SPEED * Weather.speedMultiplier() * dt
 				if walker.x >= Config.CONVEYOR_END_X then
 					walker.model:Destroy()
 					table.remove(walkers, index)

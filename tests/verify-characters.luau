@@ -26,6 +26,14 @@
 --   * a mutated build wears a Neon MutationGem on top
 --   * one snack is also built base-style (facing +Z, like Bases does)
 --
+-- The weather section (after the character loop) proves the sky system:
+-- five definitions, pickNext never repeats, and per weather the exact
+-- Lighting values, emitter rates, boosts and the snow ground tint —
+-- the mock TweenService applies tweens at once, so set() lands the sky
+-- immediately and the harness can assert the landed values. It never
+-- calls Weather.start(): the cycle loop would spin forever on the
+-- mock's instant task.wait.
+--
 -- NOTE: do not run this file directly with `luau`. The luau CLI's
 -- require() isolates module globals, so the mock cannot be injected
 -- through require. Run tests/run.sh instead: it assembles the mock,
@@ -234,9 +242,118 @@ verifySnack(ramen, "Golden", beltFwd, beltLat, "[belt, Golden mutation]")
 local fry = Config.BRAINROTS[1]
 verifySnack(fry, "None", Vector3.new(0, 0, 1), Vector3.new(1, 0, 0), "[base, faces belt]")
 
+-- ---------- Weather system ----------
+-- The mock TweenService applies tweens at once, so set() lands the sky
+-- immediately and the harness asserts the landed values. Mock Color3
+-- has no value equality (plain tables), so colours compare by _rgb.
+print("=== Weather system headless verification ===")
+
+local function sameColor(a, b)
+	return a ~= nil and b ~= nil and a._rgb ~= nil and b._rgb ~= nil
+		and a._rgb[1] == b._rgb[1] and a._rgb[2] == b._rgb[2] and a._rgb[3] == b._rgb[3]
+end
+
+-- Five definitions, distinct ids, every field present.
+check(#Weather.DEFINITIONS == 5, "5 weather definitions, got " .. tostring(#Weather.DEFINITIONS))
+local seenIds = {}
+for _, def in ipairs(Weather.DEFINITIONS) do
+	check(def.id ~= nil and def.name ~= nil and def.icon ~= nil and def.banner ~= nil and def.boost ~= nil,
+		"weather " .. tostring(def.id) .. " has name/icon/banner/boost")
+	check(seenIds[def.id] == nil, "weather id " .. tostring(def.id) .. " is unique")
+	seenIds[def.id] = true
+	check(Weather.BY_ID[def.id] == def, "BY_ID maps " .. tostring(def.id))
+end
+check(seenIds.Sunny and seenIds.Rain and seenIds.Storm and seenIds.Fog and seenIds.Snow,
+	"all five weathers present: Sunny, Rain, Storm, Fog, Snow")
+
+-- pickNext never repeats the current sky.
+for _, id in ipairs({ "Sunny", "Rain", "Storm", "Fog", "Snow" }) do
+	for _ = 1, 50 do
+		check(Weather.pickNext(id) ~= id, "pickNext never repeats " .. id)
+	end
+end
+
+local light = Mock.Lighting
+local function findEmitter(name)
+	local sky = Mock.Workspace:FindFirstChild("WeatherSky")
+	if not sky then
+		return nil
+	end
+	return sky:FindFirstChild(name)
+end
+
+-- Rain: dim grey sky, rain on, snow off, Rare+ weights lifted, banner.
+local banner = ""
+check(Weather.set("Rain", function(msg) banner = msg end, true), "set Rain succeeds")
+check(light.Brightness == 1.8, "Rain brightness 1.8, got " .. tostring(light.Brightness))
+check(light.FogEnd == 300, "Rain FogEnd 300, got " .. tostring(light.FogEnd))
+local rainEmitter = findEmitter("RainEmitter")
+local snowEmitter = findEmitter("SnowEmitter")
+check(rainEmitter ~= nil and rainEmitter.Rate == 400, "Rain emitter rate 400")
+check(snowEmitter ~= nil and snowEmitter.Rate == 0, "Snow emitter off in Rain")
+check(string.sub(banner, 1, 8) == "WEATHER:", "Rain change announces with WEATHER: prefix")
+check(string.find(banner, "RAIN") ~= nil, "Rain banner names RAIN")
+local rainWeights = Weather.adjustedWeights()
+check(rainWeights.Rare == 35 and rainWeights.Epic == 18.75 and rainWeights.Legendary == 10 and rainWeights.Mythic == 3.75,
+	"Rain lifts Rare+ weights (35/18.75/10/3.75)")
+local rarePlus = rainWeights.Rare + rainWeights.Epic + rainWeights.Legendary + rainWeights.Mythic
+check(math.abs(rarePlus - 67.5) < 0.01,
+	"Rain Rare+ share is 67.5% (54% x 1.25), got " .. tostring(rarePlus))
+check(Weather.speedMultiplier() == 1, "Rain does not slow walkers")
+check(Weather.incomeMultiplier() == 1, "Rain does not change income")
+
+-- Storm: dimmest sky, heaviest rain, Legendary/Mythic weight doubled.
+check(Weather.set("Storm", nil, true), "set Storm succeeds")
+check(light.Brightness == 1.0, "Storm brightness 1.0 (dimmest), got " .. tostring(light.Brightness))
+check(findEmitter("RainEmitter").Rate == 800, "Storm rain rate 800 (heaviest)")
+local stormWeights = Weather.adjustedWeights()
+check(stormWeights.Legendary == 16 and stormWeights.Mythic == 6,
+	"Storm doubles Legendary/Mythic weights (16/6)")
+local stormTotal = stormWeights.Common + stormWeights.Rare + stormWeights.Epic + stormWeights.Legendary + stormWeights.Mythic
+local lmShare = (stormWeights.Legendary + stormWeights.Mythic) / stormTotal
+check(math.abs(lmShare - 0.22) < 0.005,
+	"Storm Legendary+Mythic share is 22% (11% x 2), got " .. string.format("%.3f", lmShare))
+
+-- Fog: thick fog, walkers slowed to 75%.
+check(Weather.set("Fog", nil, true), "set Fog succeeds")
+check(light.FogEnd == 80, "Fog FogEnd 80 (thick), got " .. tostring(light.FogEnd))
+check(Weather.speedMultiplier() == 0.75, "Fog slows walkers to 0.75x")
+check(Weather.incomeMultiplier() == 1, "Fog does not change income")
+
+-- Snow: cold sky, snow on, rain off, white ground, winter income bonus.
+local plate = Instance.new("Part")
+plate.Name = "Baseplate"
+plate.Color = Color3.fromRGB(82, 184, 82)
+plate.Material = Enum.Material.Grass
+plate.Parent = Mock.Workspace
+check(Weather.set("Snow", function(msg) banner = msg end, true), "set Snow succeeds")
+check(light.Brightness == 2.1, "Snow brightness 2.1, got " .. tostring(light.Brightness))
+check(findEmitter("SnowEmitter").Rate == 250, "Snow emitter rate 250")
+check(findEmitter("RainEmitter").Rate == 0, "Rain emitter off in Snow")
+check(sameColor(plate.Color, Color3.fromRGB(245, 247, 250)), "Snow turns the baseplate white")
+check(plate.Material == Enum.Material.Snow, "Snow turns the baseplate to Snow material")
+check(Weather.incomeMultiplier() == 1.25, "Snow pays +25% base income")
+check(string.find(banner, "SNOW") ~= nil, "Snow banner names SNOW")
+
+-- Leaving Snow restores the grass exactly.
+check(Weather.set("Sunny", nil, true), "set Sunny succeeds")
+check(sameColor(plate.Color, Color3.fromRGB(82, 184, 82)), "Sunny restores the baseplate colour")
+check(plate.Material == Enum.Material.Grass, "Sunny restores the baseplate material")
+check(light.Brightness == 2.5 and light.FogEnd == 420, "Sunny restores the bright clear sky")
+check(findEmitter("RainEmitter").Rate == 0 and findEmitter("SnowEmitter").Rate == 0, "Sunny turns both emitters off")
+check(Weather.speedMultiplier() == 1 and Weather.incomeMultiplier() == 1, "Sunny is the no-boost baseline")
+local sunnyWeights = Weather.adjustedWeights()
+check(sunnyWeights.Common == 46 and sunnyWeights.Rare == 28 and sunnyWeights.Mythic == 3,
+	"Sunny spawns on the base weights")
+
+-- Unknown weather is refused without touching the sky.
+local before = Weather.current
+check(Weather.set("Nope", nil, true) == false, "set rejects an unknown weather id")
+check(Weather.current == before, "rejected set leaves the current weather alone")
+
 print(string.format("=== %d checks, %d FAILURES ===", checks, fails))
 if fails > 0 then
-	print("RESULT: FAIL -- the characters are not proven to render. Fix the factory.")
+	print("RESULT: FAIL -- the characters or the weather are not proven. Fix the failing checks.")
 else
-	print("RESULT: PASS -- every snack builds as a real, visible, on-the-ground 3D character.")
+	print("RESULT: PASS -- every snack builds as a real, visible, on-the-ground 3D character, and all five weathers land their sky, boost and ground.")
 end
