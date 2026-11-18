@@ -4,6 +4,8 @@
 -- walking the conveyor is carried away, and every player caught outside
 -- their own base is dragged home. Stay on your plot or lose the belt.
 
+--!strict
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
@@ -17,20 +19,20 @@ Wave.nextWaveIn = Config.WAVE_PERIOD
 -- The warning beacon by the spawn and the red wall that sweeps the map.
 -- Both are plain parts from the place file; nil-safe if a build predates
 -- them, so an old place file never errors the wave loop.
-local function setBeacon(lit)
+local function setBeacon(lit: boolean)
 	local beacon = Workspace:FindFirstChild("WaveBeaconBall")
-	if beacon then
+	if beacon and beacon:IsA("BasePart") then
 		beacon.Color = lit and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(100, 15, 15)
 		local light = beacon:FindFirstChild("WaveBeaconLight")
-		if light then
+		if light and light:IsA("PointLight") then
 			light.Brightness = lit and 4 or 1
 		end
 	end
 end
 
-local function setWall(transparency, x)
+local function setWall(transparency: number, x: number?)
 	local wall = Workspace:FindFirstChild("WaveWall")
-	if wall then
+	if wall and wall:IsA("BasePart") then
 		wall.Transparency = transparency
 		if x then
 			wall.Position = Vector3.new(x, 8, 0)
@@ -38,7 +40,7 @@ local function setWall(transparency, x)
 	end
 end
 
-function Wave.start(State, Bases, Spawner, alertAll)
+function Wave.start(State: any, Bases: any, Spawner: any, alertAll: (string) -> ())
 	if running then
 		return
 	end
@@ -71,7 +73,7 @@ function Wave.start(State, Bases, Spawner, alertAll)
 						local character = player.Character
 						if character and center then
 							local root = character:FindFirstChild("HumanoidRootPart")
-							if root then
+							if root and root:IsA("BasePart") then
 								root.CFrame = CFrame.new(center + Vector3.new(0, 3, 0))
 							end
 						end

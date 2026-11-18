@@ -1,13 +1,20 @@
 -- Steal a Snack: Bases.
 -- Owns the eight plots around the conveyor: who holds which plot, the
 -- six slots on each plot, the 3D brainrot models standing on them, and
--- the "am I home?" test the Hunger Wave uses.
+-- the "am I home?" test the Hunger Wave uses. Each base also carries a
+-- floating name label, so a screenshot shows at a glance whose base is
+-- whose -- and whether it is locked.
+
+--!strict
 
 local Workspace = game:GetService("Workspace")
 
+local State = require(script.Parent.State)
+local CharacterFactory = require(script.Parent.CharacterFactory)
+
 local Bases = {}
 
-Bases.Clicked = nil
+Bases.Clicked = nil :: ((Player, string) -> ())?
 
 Bases.CENTERS = {
 	Vector3.new(-45, 1, -32),
@@ -29,28 +36,84 @@ local SLOT_OFFSETS = {
 	Vector3.new(7, 0, 4),
 }
 
-local modelsByUid = {}
-local animated = {}
-local shields = {}
-local folder = nil
+local modelsByUid = {} :: { [string]: Model }
+local animated = {} :: { [string]: { model: Model, baseCFrame: CFrame, phase: number } }
+local shields = {} :: { [number]: BasePart }
+local labels = {} :: { [number]: { gui: BillboardGui, text: TextLabel } }
+local labelOwner = {} :: { [number]: string? }
+local labelLocked = {} :: { [number]: boolean }
+local folder: Folder? = nil
 
-local function getFolder()
+local function getFolder(): Folder
 	if not folder then
-		folder = Workspace:FindFirstChild("Brainrots")
-		if not folder then
-			folder = Instance.new("Folder")
-			folder.Name = "Brainrots"
-			folder.Parent = Workspace
+		local found = Workspace:FindFirstChild("Brainrots")
+		if found and found:IsA("Folder") then
+			folder = found
+		else
+			local created = Instance.new("Folder")
+			created.Name = "Brainrots"
+			created.Parent = Workspace
+			folder = created
 		end
 	end
-	return folder
+	return folder :: Folder
 end
 
-function Bases.assign(State, data)
+-- The floating name plate over a base: "BASE 3" on top, the owner's
+-- name (or EMPTY) under it, and a LOCKED line while the lock is up.
+-- One BillboardGui per base, created once and re-texted on change.
+function Bases.refreshBaseLabel(baseIndex: number, ownerName: string?, locked: boolean?)
+	if ownerName ~= nil then
+		labelOwner[baseIndex] = ownerName
+	end
+	if locked ~= nil then
+		labelLocked[baseIndex] = locked
+	end
+	local plate = Workspace:FindFirstChild("Base" .. tostring(baseIndex))
+	if not plate or not plate:IsA("BasePart") then
+		return
+	end
+	local entry = labels[baseIndex]
+	if not entry then
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "BaseLabel"
+		gui.Size = UDim2.fromOffset(220, 72)
+		gui.StudsOffset = Vector3.new(0, 8, 0)
+		gui.AlwaysOnTop = false
+		gui.Parent = plate
+		local text = Instance.new("TextLabel")
+		text.Size = UDim2.fromScale(1, 1)
+		text.BackgroundTransparency = 0.3
+		text.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+		text.TextColor3 = Color3.fromRGB(255, 255, 255)
+		text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		text.TextStrokeTransparency = 0.3
+		text.Font = Enum.Font.FredokaOne
+		text.TextScaled = true
+		text.Parent = gui
+		entry = { gui = gui, text = text }
+		labels[baseIndex] = entry
+	end
+	local owner = labelOwner[baseIndex] or "EMPTY"
+	local lockLine = labelLocked[baseIndex] and "\nLOCKED" or ""
+	entry.text.Text = "BASE " .. tostring(baseIndex) .. "\n" .. owner .. lockLine
+end
+
+function Bases.clearBaseLabel(baseIndex: number)
+	labelOwner[baseIndex] = nil
+	labelLocked[baseIndex] = false
+	local entry = labels[baseIndex]
+	if entry then
+		entry.text.Text = "BASE " .. tostring(baseIndex) .. "\nEMPTY"
+	end
+end
+
+function Bases.assign(StateModule: any, data: State.PlayerData, ownerName: string): number
 	for index = 1, #Bases.CENTERS do
-		if not State.takenBases[index] then
-			State.takenBases[index] = true
+		if not StateModule.takenBases[index] then
+			StateModule.takenBases[index] = true
 			data.baseIndex = index
+			Bases.refreshBaseLabel(index, ownerName, false)
 			return index
 		end
 	end
@@ -58,14 +121,15 @@ function Bases.assign(State, data)
 	return 0
 end
 
-function Bases.release(State, data)
+function Bases.release(StateModule: any, data: State.PlayerData)
 	if data.baseIndex > 0 then
-		State.takenBases[data.baseIndex] = nil
+		StateModule.takenBases[data.baseIndex] = nil
+		Bases.clearBaseLabel(data.baseIndex)
 		data.baseIndex = 0
 	end
 end
 
-function Bases.getFreeSlot(data)
+function Bases.getFreeSlot(data: State.PlayerData): number?
 	local used = {}
 	for _, entry in ipairs(data.owned) do
 		used[entry.slot] = true
@@ -78,7 +142,7 @@ function Bases.getFreeSlot(data)
 	return nil
 end
 
-function Bases.slotPosition(baseIndex, slot)
+function Bases.slotPosition(baseIndex: number, slot: number): Vector3
 	local center = Bases.CENTERS[baseIndex]
 	if not center then
 		return Vector3.new(0, 2, 0)
@@ -86,13 +150,13 @@ function Bases.slotPosition(baseIndex, slot)
 	return center + SLOT_OFFSETS[slot] + Vector3.new(0, 1.5, 0)
 end
 
-function Bases.isInsideBase(player, data)
+function Bases.isInsideBase(player: Player, data: State.PlayerData): boolean
 	local character = player.Character
 	if not character then
 		return false
 	end
 	local root = character:FindFirstChild("HumanoidRootPart")
-	if not root then
+	if not root or not root:IsA("BasePart") then
 		return false
 	end
 	local center = Bases.CENTERS[data.baseIndex]
@@ -103,73 +167,36 @@ function Bases.isInsideBase(player, data)
 	return math.abs(pos.X - center.X) <= 11 and math.abs(pos.Z - center.Z) <= 8
 end
 
-function Bases.baseCenter(data)
+function Bases.baseCenter(data: State.PlayerData): Vector3?
 	return Bases.CENTERS[data.baseIndex]
 end
 
--- Builds the visible snack character: a coloured ball body, two eyes,
--- and a floating label with its name, rarity, rate and mutation.
-function Bases.buildModel(entry, position)
-	local model = Instance.new("Model")
-	model.Name = entry.name
+-- Builds the visible snack character through the shared factory: a
+-- coloured ball body, two eyes facing the belt, and a floating label
+-- with its name, rarity, rate and mutation. Clicking it tries a steal.
+function Bases.buildModel(entry: State.OwnedEntry, position: Vector3): Model
+	local model, body, _eyes = CharacterFactory.build({
+		name = entry.name,
+		color = entry.color,
+		size = entry.size,
+		position = position,
+		labelText = entry.name
+			.. "\n"
+			.. entry.rarity
+			.. (entry.mutation ~= "None" and (" " .. entry.mutation) or "")
+			.. "  $" .. tostring(entry.rate * entry.multiplier) .. "/s",
+		forward = Vector3.new(0, 0, 1),
+		lateral = Vector3.new(1, 0, 0),
+		billboardSize = UDim2.fromOffset(140, 56),
+		clickDistance = 32,
+		onClick = function(clickingPlayer: Player)
+			if Bases.Clicked then
+				Bases.Clicked(clickingPlayer, entry.uid)
+			end
+		end,
+		parent = getFolder(),
+	})
 
-	local body = Instance.new("Part")
-	body.Name = "Body"
-	body.Shape = Enum.PartType.Ball
-	body.Size = Vector3.new(entry.size, entry.size, entry.size)
-	body.Color = entry.color
-	body.Material = Enum.Material.SmoothPlastic
-	body.Anchored = true
-	body.CanCollide = false
-	body.Position = position
-	body.Parent = model
-
-	local eyeOffset = entry.size * 0.22
-	for _, side in ipairs({ -1, 1 }) do
-		local eye = Instance.new("Part")
-		eye.Name = "Eye"
-		eye.Shape = Enum.PartType.Ball
-		eye.Size = Vector3.new(entry.size * 0.22, entry.size * 0.22, entry.size * 0.22)
-		eye.Color = Color3.fromRGB(20, 20, 20)
-		eye.Material = Enum.Material.SmoothPlastic
-		eye.Anchored = true
-		eye.CanCollide = false
-		eye.Position = position + Vector3.new(side * eyeOffset, entry.size * 0.18, entry.size * 0.48)
-		eye.Parent = model
-	end
-
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "Label"
-	billboard.Size = UDim2.fromOffset(140, 56)
-	billboard.StudsOffset = Vector3.new(0, entry.size * 0.9, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = body
-
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 0.35
-	label.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.Font = Enum.Font.FredokaOne
-	label.TextScaled = true
-	label.Text = entry.name
-		.. "\n"
-		.. entry.rarity
-		.. (entry.mutation ~= "None" and (" " .. entry.mutation) or "")
-		.. "  $" .. tostring(entry.rate * entry.multiplier) .. "/s"
-	label.Parent = billboard
-
-	local clicker = Instance.new("ClickDetector")
-	clicker.MaxActivationDistance = 32
-	clicker.Parent = body
-	clicker.MouseClick:Connect(function(clickingPlayer)
-		if Bases.Clicked then
-			Bases.Clicked(clickingPlayer, entry.uid)
-		end
-	end)
-
-	model.PrimaryPart = body
-	model.Parent = getFolder()
 	modelsByUid[entry.uid] = model
 	animated[entry.uid] = { model = model, baseCFrame = body.CFrame, phase = math.random() * math.pi * 2 }
 	return model
@@ -193,7 +220,7 @@ end
 
 -- A translucent blue dome over a base while its lock is up, so a lock
 -- is visible in the world, not only on the owner's HUD.
-function Bases.setLockVisual(baseIndex, locked)
+function Bases.setLockVisual(baseIndex: number, locked: boolean)
 	local center = Bases.CENTERS[baseIndex]
 	if not center then
 		return
@@ -216,7 +243,7 @@ function Bases.setLockVisual(baseIndex, locked)
 	shield.Transparency = locked and 0.85 or 1
 end
 
-function Bases.placeOnBase(data, entry)
+function Bases.placeOnBase(data: State.PlayerData, entry: State.OwnedEntry): number?
 	local slot = Bases.getFreeSlot(data)
 	if not slot then
 		return nil
@@ -227,7 +254,7 @@ function Bases.placeOnBase(data, entry)
 	return slot
 end
 
-function Bases.removeModel(uid)
+function Bases.removeModel(uid: string)
 	local model = modelsByUid[uid]
 	if model then
 		model:Destroy()
@@ -236,7 +263,7 @@ function Bases.removeModel(uid)
 	animated[uid] = nil
 end
 
-function Bases.clearBase(data)
+function Bases.clearBase(data: State.PlayerData)
 	for _, entry in ipairs(data.owned) do
 		Bases.removeModel(entry.uid)
 	end

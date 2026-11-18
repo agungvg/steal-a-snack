@@ -2,6 +2,17 @@
 -- Wires the services together: state, economy tick, conveyor, bases,
 -- stealing, the Hunger Wave and rebirth, plus every RemoteEvent the
 -- client HUD talks to. No game logic lives here, only wiring.
+--
+-- Remote contract (client -> server; the server decides everything):
+--   LockBase (no args)        lock your base for 20s, 60s cooldown
+--   RequestRebirth (no args)  trade everything for +25% income
+-- Server -> client:
+--   GameSync (snapshot)       cash, income, owned, leaders, timers
+--   WaveAlert (string)        Hunger Wave warnings and rare spawns
+-- Buying and stealing run through the ClickDetectors on the 3D models;
+-- the server still validates each one (rate limit, range, state).
+
+--!strict
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,22 +21,22 @@ local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Co
 local State = require(script.Parent.State)
 local Bases = require(script.Parent.Bases)
 local Economy = require(script.Parent.Economy)
+local RateLimit = require(script.Parent.RateLimit)
+local Rebirth = require(script.Parent.Rebirth)
+local Saves = require(script.Parent.Saves)
 local Spawner = require(script.Parent.Spawner)
 local Steal = require(script.Parent.Steal)
 local Wave = require(script.Parent.Wave)
-local Rebirth = require(script.Parent.Rebirth)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
-local BuyBrainrot = Remotes:WaitForChild("BuyBrainrot")
 local GameSync = Remotes:WaitForChild("GameSync")
 local LockBase = Remotes:WaitForChild("LockBase")
 local RequestRebirth = Remotes:WaitForChild("RequestRebirth")
-local StealBrainrot = Remotes:WaitForChild("StealBrainrot")
 local WaveAlert = Remotes:WaitForChild("WaveAlert")
 
-local notices = {}
+local notices = {} :: { [Player]: string }
 
-local function syncPlayer(player, notice)
+local function syncPlayer(player: Player, notice: string?)
 	local data = State.get(player)
 	if not data then
 		return
@@ -37,69 +48,73 @@ local function syncPlayer(player, notice)
 	GameSync:FireClient(player, snapshot)
 end
 
-local function alertAll(message)
+local function alertAll(message: string)
 	WaveAlert:FireAllClients(message)
 end
 
-Players.PlayerAdded:Connect(function(player)
+Players.PlayerAdded:Connect(function(player: Player)
 	local data = State.newPlayer(player)
-	Bases.assign(State, data)
-	syncPlayer(player, "Welcome to Steal a Snack! Click a snack on the belt to buy it.")
+	Bases.assign(State, data, player.Name)
+	local restored = Saves.loadInto(State, Bases, player, data)
+	local greeting = "Welcome to Steal a Snack! Click a snack on the belt to buy it."
+	if data.baseIndex == 0 then
+		greeting = "Welcome to Steal a Snack! All 8 bases are taken right now."
+	elseif restored then
+		greeting = "Welcome back! Your snacks and cash were restored."
+	end
+	syncPlayer(player, greeting)
 end)
 
-Players.PlayerRemoving:Connect(function(player)
+Players.PlayerRemoving:Connect(function(player: Player)
 	local data = State.get(player)
 	if data then
+		Saves.saveNow(player, data)
 		Bases.clearBase(data)
+		Bases.release(State, data)
 		State.remove(player)
 	end
 	notices[player] = nil
+	RateLimit.clear(player)
+end)
+
+game:BindToClose(function()
+	Saves.saveAll(State)
 end)
 
 -- Clicking a brainrot on someone else's base tries to steal it.
-Bases.Clicked = function(player, uid)
+-- Steal.onStolen already refreshes both players' HUDs.
+Bases.Clicked = function(player: Player, uid: string)
 	local _ok, message = Steal.trySteal(State, Bases, player, uid)
 	notices[player] = message
 	syncPlayer(player, message)
-	if _ok then
-		for victim, victimData in pairs(State.players) do
-			if victim ~= player and State.findOwned(victimData, uid) == nil then
-				-- The victim lost one; refresh their HUD too.
-				syncPlayer(victim)
-			end
-		end
-	end
 end
 
-BuyBrainrot.OnServerEvent:Connect(function(player, uid)
-	local _ok, message = Spawner.tryBuy(player, uid)
-	notices[player] = message
-	syncPlayer(player, message)
-end)
-
-StealBrainrot.OnServerEvent:Connect(function(player, uid)
-	local _ok, message = Steal.trySteal(State, Bases, player, uid)
-	notices[player] = message
-	syncPlayer(player, message)
-end)
-
-LockBase.OnServerEvent:Connect(function(player)
+LockBase.OnServerEvent:Connect(function(player: Player)
 	local _ok, message = Steal.tryLock(State, player)
 	notices[player] = message
 	syncPlayer(player, message)
 end)
 
-RequestRebirth.OnServerEvent:Connect(function(player)
+RequestRebirth.OnServerEvent:Connect(function(player: Player)
+	if not RateLimit.check(player, "rebirth") then
+		notices[player] = "Slow down! Too many clicks."
+		syncPlayer(player, notices[player])
+		return
+	end
 	local _ok, message = Rebirth.tryRebirth(State, Bases, player)
 	notices[player] = message
 	syncPlayer(player, message)
 end)
 
-Spawner.onBought = function(player)
+Spawner.onBought = function(player: Player)
 	syncPlayer(player)
 end
 
-Steal.onStolen = function(thief, victim)
+Spawner.onRareSpawn = function(message: string)
+	alertAll(message)
+end
+
+Steal.onStolen = function(thief: Player, victim: Player)
 	syncPlayer(thief)
 	syncPlayer(victim)
 end
@@ -113,15 +128,19 @@ Economy.start(State, syncPlayer)
 Spawner.start()
 Bases.start()
 Wave.start(State, Bases, Spawner, alertAll)
+Saves.start(State)
 
--- Keep every base's lock dome in step with its lock timer: the dome
--- appears the moment a lock starts and fades the moment it ends.
+-- Keep every base's lock dome and name label in step with its lock
+-- timer: the dome appears the moment a lock starts and fades the
+-- moment it ends, and the label shows LOCKED while it is up.
 task.spawn(function()
 	while true do
 		task.wait(1)
 		for _, data in pairs(State.players) do
 			if data.baseIndex > 0 then
-				Bases.setLockVisual(data.baseIndex, State.isLocked(data))
+				local locked = State.isLocked(data)
+				Bases.setLockVisual(data.baseIndex, locked)
+				Bases.refreshBaseLabel(data.baseIndex, nil, locked)
 			end
 		end
 	end

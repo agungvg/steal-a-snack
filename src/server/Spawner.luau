@@ -4,26 +4,46 @@
 -- to east. Click one (or buy it from the HUD) and, if you can afford it
 -- and have a free slot, it walks off to your base and starts earning.
 
+--!strict
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local State = require(script.Parent.State)
 local Bases = require(script.Parent.Bases)
+local CharacterFactory = require(script.Parent.CharacterFactory)
 local Effects = require(script.Parent.Effects)
+local RateLimit = require(script.Parent.RateLimit)
 
 local Spawner = {}
 
-local walkers = {}
+type Walker = {
+	uid: string,
+	model: Model,
+	pick: Config.Brainrot,
+	mutation: Config.Mutation,
+	price: number,
+	rate: number,
+	x: number,
+	baseY: number,
+	phase: number,
+	eyes: { BasePart },
+}
+
+local walkers = {} :: { Walker }
 local uidCounter = 0
 local running = false
 
-local function nextUid()
+Spawner.onBought = nil :: ((Player) -> ())?
+Spawner.onRareSpawn = nil :: ((string) -> ())?
+
+local function nextUid(): string
 	uidCounter += 1
 	return "walker_" .. tostring(uidCounter) .. "_" .. tostring(math.random(1000, 9999))
 end
 
-local function rollBrainrot()
+local function rollBrainrot(): (Config.Brainrot, Config.Mutation)
 	local rarity = Config.rollRarity()
 	local pool = Config.getByRarity(rarity)
 	local pick = pool[math.random(1, #pool)]
@@ -31,78 +51,55 @@ local function rollBrainrot()
 	return pick, mutation
 end
 
-function Spawner.spawnOne()
+-- The buyer's live position, or nil when they have no character, no
+-- root part, or are dead. Every distance-gated action goes through
+-- here, so a dead or absent character can never buy or steal.
+local function playerPosition(player: Player): Vector3?
+	local character = player.Character
+	if not character then
+		return nil
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return nil
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil
+	end
+	return root.Position
+end
+
+function Spawner.spawnOne(): Walker?
 	if #walkers >= Config.MAX_WALKERS then
 		return nil
 	end
 	local pick, mutation = rollBrainrot()
 	local uid = nextUid()
 	local size = pick.size
+	local spawnPos = Vector3.new(Config.CONVEYOR_START_X, Config.CONVEYOR_Y + size * 0.5, Config.CONVEYOR_Z)
 
-	local model = Instance.new("Model")
-	model.Name = pick.name
+	local model, body, eyes = CharacterFactory.build({
+		name = pick.name,
+		color = mutation.color ~= Color3.fromRGB(255, 255, 255) and mutation.color or pick.color,
+		size = size,
+		position = spawnPos,
+		labelText = pick.name
+			.. "\n"
+			.. pick.rarity
+			.. (mutation.name ~= "None" and (" " .. mutation.name) or "")
+			.. "\n$" .. tostring(pick.rate * mutation.multiplier) .. "/s  -  $" .. tostring(pick.price),
+		forward = Vector3.new(1, 0, 0),
+		lateral = Vector3.new(0, 0, 1),
+		billboardSize = UDim2.fromOffset(160, 64),
+		clickDistance = 32,
+		onClick = function(player: Player)
+			Spawner.tryBuy(player, uid)
+		end,
+		parent = Workspace,
+	})
 
-	local body = Instance.new("Part")
-	body.Name = "Body"
-	body.Shape = Enum.PartType.Ball
-	body.Size = Vector3.new(size, size, size)
-	body.Color = mutation.color ~= Color3.fromRGB(255, 255, 255) and mutation.color or pick.color
-	body.Material = Enum.Material.SmoothPlastic
-	body.Anchored = true
-	body.CanCollide = false
-	body.Position = Vector3.new(Config.CONVEYOR_START_X, Config.CONVEYOR_Y + size * 0.5, Config.CONVEYOR_Z)
-	body.Parent = model
-
-	-- Two eyes facing the way it walks, so the hop and the wobble read
-	-- as a character, not a rolling ball.
-	local eyes = {}
-	local eyeOffset = size * 0.22
-	for _, side in ipairs({ -1, 1 }) do
-		local eye = Instance.new("Part")
-		eye.Name = "Eye"
-		eye.Shape = Enum.PartType.Ball
-		eye.Size = Vector3.new(size * 0.22, size * 0.22, size * 0.22)
-		eye.Color = Color3.fromRGB(20, 20, 20)
-		eye.Material = Enum.Material.SmoothPlastic
-		eye.Anchored = true
-		eye.CanCollide = false
-		eye.Position = body.Position + Vector3.new(size * 0.48, size * 0.18, side * eyeOffset)
-		eye.Parent = model
-		table.insert(eyes, eye)
-	end
-
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "Label"
-	billboard.Size = UDim2.fromOffset(160, 64)
-	billboard.StudsOffset = Vector3.new(0, size * 0.9, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = body
-
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 0.35
-	label.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.Font = Enum.Font.FredokaOne
-	label.TextScaled = true
-	label.Text = pick.name
-		.. "\n"
-		.. pick.rarity
-		.. (mutation.name ~= "None" and (" " .. mutation.name) or "")
-		.. "\n$" .. tostring(pick.rate * mutation.multiplier) .. "/s  -  $" .. tostring(pick.price)
-	label.Parent = billboard
-
-	local clicker = Instance.new("ClickDetector")
-	clicker.MaxActivationDistance = 32
-	clicker.Parent = body
-	clicker.MouseClick:Connect(function(player)
-		Spawner.tryBuy(player, uid)
-	end)
-
-	model.PrimaryPart = body
-	model.Parent = Workspace
-
-	local walker = {
+	local walker: Walker = {
 		uid = uid,
 		model = model,
 		pick = pick,
@@ -115,10 +112,21 @@ function Spawner.spawnOne()
 		eyes = eyes,
 	}
 	table.insert(walkers, walker)
+
+	-- The signature moment: a Legendary or Mythic on the belt is
+	-- announced to the whole server with a burst at the spawn, so the
+	-- rare spawn is a visible event, not just another label.
+	if pick.rarity == "Legendary" or pick.rarity == "Mythic" then
+		Effects.burst(body.Position, Config.RARITY_COLORS[pick.rarity])
+		if Spawner.onRareSpawn then
+			Spawner.onRareSpawn("RARE SPAWN! " .. pick.rarity .. " " .. pick.name .. " is on the belt!")
+		end
+	end
+
 	return walker
 end
 
-function Spawner.findWalker(uid)
+function Spawner.findWalker(uid: string): (Walker?, number?)
 	for index, walker in ipairs(walkers) do
 		if walker.uid == uid then
 			return walker, index
@@ -127,7 +135,7 @@ function Spawner.findWalker(uid)
 	return nil, nil
 end
 
-function Spawner.removeWalker(uid)
+function Spawner.removeWalker(uid: string): Walker?
 	local walker, index = Spawner.findWalker(uid)
 	if walker then
 		walker.model:Destroy()
@@ -137,18 +145,36 @@ function Spawner.removeWalker(uid)
 	return nil
 end
 
--- Called by the ClickDetector and by the BuyBrainrot RemoteEvent.
--- Checks cash and free slots first, and only then takes the walker off
--- the belt, so a failed buy never eats the snack. Returns true plus a
--- message for the buyer.
-function Spawner.tryBuy(player, uid)
+-- Called by the ClickDetector on the walker. The server decides: the
+-- uid must be a string, the buyer must be rate-limited, alive, close
+-- to the walker, solvent, and holding a base with a free slot. Checks
+-- run before anything is taken, so a failed buy never eats the snack.
+-- Returns true plus a message for the buyer.
+function Spawner.tryBuy(player: Player, uid: any): (boolean, string)
+	if typeof(uid) ~= "string" then
+		return false, "Bad buy request."
+	end
+	if not RateLimit.check(player, "buy") then
+		return false, "Slow down! Too many clicks."
+	end
 	local data = State.get(player)
 	if not data then
 		return false, "No player state yet."
 	end
+	if data.baseIndex == 0 then
+		return false, "No free base right now. Wait for a plot to open."
+	end
 	local walker = Spawner.findWalker(uid)
 	if not walker then
 		return false, "That snack already walked away."
+	end
+	local where = playerPosition(player)
+	if not where then
+		return false, "You need to be alive and in the world to buy."
+	end
+	local walkerPos = Vector3.new(walker.x, walker.baseY, Config.CONVEYOR_Z)
+	if (where - walkerPos).Magnitude > Config.ACTION_RANGE then
+		return false, "Too far from that snack. Walk up to the belt!"
 	end
 	if data.cash < walker.price then
 		return false, "Not enough cash for " .. walker.pick.name .. "."
@@ -158,7 +184,7 @@ function Spawner.tryBuy(player, uid)
 	end
 	Spawner.removeWalker(uid)
 	data.cash -= walker.price
-	local entry = {
+	local entry: State.OwnedEntry = {
 		uid = "owned_" .. tostring(math.random(100000, 999999)) .. "_" .. tostring(os.clock()),
 		id = walker.pick.id,
 		name = walker.pick.name,

@@ -8,7 +8,10 @@
 -- Everything here is sized to survive being scaled down: the judge sees
 -- screenshots at a fraction of full size, so cash, income and the wave
 -- warning are big, bold and high-contrast, with a dark backing and a
--- black text stroke behind every line.
+-- black text stroke behind every line. A UIScale shrinks the whole HUD
+-- on viewports narrower than 1280px instead of clipping it.
+
+--!strict
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,7 +32,16 @@ gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = playerGui
 
-local function makeLabel(parent, name, position, size, textSize)
+-- Shrink the HUD on narrow viewports instead of clipping it off-screen.
+local uiScale = Instance.new("UIScale")
+uiScale.Parent = gui
+local function rescale()
+	uiScale.Scale = math.clamp(gui.AbsoluteSize.X / 1280, 0.6, 1)
+end
+gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(rescale)
+rescale()
+
+local function makeLabel(parent: Instance, name: string, position: UDim2, size: UDim2, textSize: number): TextLabel
 	local label = Instance.new("TextLabel")
 	label.Name = name
 	label.Position = position
@@ -46,7 +58,7 @@ local function makeLabel(parent, name, position, size, textSize)
 	return label
 end
 
-local function makeButton(parent, name, position, size, text)
+local function makeButton(parent: Instance, name: string, position: UDim2, size: UDim2, text: string): TextButton
 	local button = Instance.new("TextButton")
 	button.Name = name
 	button.Position = position
@@ -74,7 +86,7 @@ local waveTimer = makeLabel(gui, "WaveTimer", UDim2.new(0.5, -120, 0, 110), UDim
 
 -- Owned snacks, left side.
 local ownedTitle = makeLabel(gui, "OwnedTitle", UDim2.new(0, 12, 0, 120), UDim2.fromOffset(280, 36), 22)
-ownedTitle.Text = "MY SNACKS"
+ownedTitle.Text = "MY SNACKS (0/" .. tostring(#Config.BRAINROTS) .. ")"
 local ownedList = Instance.new("Frame")
 ownedList.Name = "OwnedList"
 ownedList.Position = UDim2.new(0, 12, 0, 160)
@@ -94,15 +106,35 @@ local rebirthButton = makeButton(gui, "RebirthButton", UDim2.new(1, -232, 0, 186
 rebirthButton.BackgroundColor3 = Color3.fromRGB(180, 90, 255)
 rebirthButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 
+-- Leaderboard, right side under the buttons: the richest players on
+-- this server, from the server's own cash totals.
+local boardTitle = makeLabel(gui, "BoardTitle", UDim2.new(1, -232, 0, 252), UDim2.fromOffset(220, 36), 20)
+boardTitle.Text = "TOP SNACK LORDS"
+local boardList = Instance.new("Frame")
+boardList.Name = "BoardList"
+boardList.Position = UDim2.new(1, -232, 0, 292)
+boardList.Size = UDim2.fromOffset(220, 190)
+boardList.BackgroundTransparency = 0.3
+boardList.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+boardList.Parent = gui
+local boardLines = {}
+for line = 1, 5 do
+	local row = makeLabel(boardList, "Board" .. tostring(line), UDim2.fromOffset(8, 8 + (line - 1) * 36), UDim2.fromOffset(204, 32), 17)
+	row.BackgroundTransparency = 1
+	row.TextXAlignment = Enum.TextXAlignment.Left
+	table.insert(boardLines, row)
+end
+
 -- Notice line and hint, bottom centre.
 local noticeLabel = makeLabel(gui, "NoticeLabel", UDim2.new(0.5, -320, 1, -88), UDim2.fromOffset(640, 36), 20)
 local hintLabel = makeLabel(gui, "HintLabel", UDim2.new(0.5, -320, 1, -48), UDim2.fromOffset(640, 34), 17)
 hintLabel.Text = "Click a snack on the belt to buy it. Click a rival's snack to steal it. Get home before the Hunger Wave!"
 
-local function refreshOwned(owned)
+local function refreshOwned(owned: any)
 	for _, child in ipairs(ownedList:GetChildren()) do
 		child:Destroy()
 	end
+	ownedTitle.Text = "MY SNACKS (" .. tostring(#owned) .. "/" .. tostring(#Config.BRAINROTS) .. ")"
 	if #owned == 0 then
 		local empty = makeLabel(ownedList, "Empty", UDim2.fromOffset(8, 8), UDim2.fromOffset(264, 34), 18)
 		empty.Text = "No snacks yet. Buy one!"
@@ -118,9 +150,20 @@ local function refreshOwned(owned)
 	end
 end
 
+local function refreshLeaders(leaders: any)
+	for index, row in ipairs(boardLines) do
+		local entry = leaders and leaders[index]
+		if entry then
+			row.Text = tostring(index) .. ". " .. entry.name .. "  $" .. tostring(entry.cash)
+		else
+			row.Text = tostring(index) .. ". ---"
+		end
+	end
+end
+
 -- The cheapest brainrot the player does not own yet, with how far away
 -- it is. The cast table is already ordered cheapest first.
-local function refreshNextTier(owned, cash)
+local function refreshNextTier(owned: any, cash: number)
 	local ownedIds = {}
 	for _, entry in ipairs(owned) do
 		ownedIds[entry.id] = true
@@ -140,7 +183,7 @@ end
 
 local waveHideAt = 0
 
-GameSync.OnClientEvent:Connect(function(state)
+GameSync.OnClientEvent:Connect(function(state: any)
 	cashLabel.Text = "CASH: $" .. tostring(state.cash)
 	incomeLabel.Text = "$" .. tostring(state.income) .. "/s  |  Rebirths: " .. tostring(state.rebirths) .. "  |  Income x" .. tostring(state.multiplier)
 	if state.lockRemaining > 0 then
@@ -166,10 +209,11 @@ GameSync.OnClientEvent:Connect(function(state)
 		noticeLabel.Text = state.notice
 	end
 	refreshOwned(state.owned)
+	refreshLeaders(state.leaders)
 	refreshNextTier(state.owned, state.cash)
 end)
 
-WaveAlert.OnClientEvent:Connect(function(message)
+WaveAlert.OnClientEvent:Connect(function(message: string)
 	waveLabel.Text = message
 	waveLabel.Visible = true
 	waveHideAt = os.clock() + 12
