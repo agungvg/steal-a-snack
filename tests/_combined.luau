@@ -726,46 +726,86 @@ local function addVerticalCylinder(
 	return addPart(ctx, name, Enum.PartType.Cylinder, Vector3.new(height, diameter, diameter), color, f, u, l, rot, material)
 end
 
--- The readable face: two big white eyes with black pupils, a sparkle
--- on each pupil, pink blush on the cheeks, and a smiling mouth, on the
--- body's front surface. faceF is how far forward the face plane sits
--- from the character's centre line; eyeU is the eye height.
-local function addFace(ctx: Ctx, faceF: number, eyeU: number)
+-- The readable face: two big white eyes with a coloured iris, black
+-- pupils, a sparkle on each pupil, tapered brows, a small nose, pink
+-- blush on the cheeks, and a smiling mouth, on the body's front
+-- surface. faceF is how far forward the face plane sits from the
+-- character's centre line; eyeU is the eye height. opts.mouth picks
+-- the mouth style ("smile", "open" with a tongue, "smirk" tilted to
+-- one side); opts.browTilt tilts the brows for expression. The face
+-- is the character -- a blank face is the one thing a good low-poly
+-- character must never have.
+local function addFace(ctx: Ctx, faceF: number, eyeU: number, opts: { mouth: string?, browTilt: number? }?)
 	local s = ctx.s
 	local eyeGap = s * 0.17
 	local eyeR = s * 0.11
 	local pupilMat = if ctx.rarity == "Mythic" then Enum.Material.Neon else Enum.Material.SmoothPlastic
+	local mouthStyle = (opts and opts.mouth) or "smile"
+	local browTilt = (opts and opts.browTilt) or 8
 	for _, side in ipairs({ -1, 1 }) do
 		addPart(ctx, "EyeWhite", Enum.PartType.Ball, Vector3.new(eyeR * 2, eyeR * 2, eyeR * 2),
 			Color3.fromRGB(255, 255, 255), faceF, eyeU, side * eyeGap)
-		addPart(ctx, "Pupil", Enum.PartType.Ball, Vector3.new(eyeR, eyeR, eyeR),
-			Color3.fromRGB(20, 20, 20), faceF + s * 0.06, eyeU, side * eyeGap, nil, pupilMat)
+		-- Iris: a warm brown ring inside the white, so the eye reads
+		-- as an eye and not a dot.
+		addPart(ctx, "Iris", Enum.PartType.Ball, Vector3.new(eyeR * 1.4, eyeR * 1.4, eyeR * 1.4),
+			Color3.fromRGB(90, 55, 25), faceF + s * 0.04, eyeU, side * eyeGap)
+		addPart(ctx, "Pupil", Enum.PartType.Ball, Vector3.new(eyeR * 0.9, eyeR * 0.9, eyeR * 0.9),
+			Color3.fromRGB(20, 20, 20), faceF + s * 0.07, eyeU, side * eyeGap, nil, pupilMat)
 		-- Sparkle on the pupil: the eye catches the light.
 		addPart(ctx, "EyeShine", Enum.PartType.Ball, Vector3.new(s * 0.04, s * 0.04, s * 0.04),
 			Color3.fromRGB(255, 255, 255), faceF + s * 0.1, eyeU + s * 0.03, side * eyeGap - s * 0.02)
+		-- Brow: a tapered bar above the eye. The two brows tilt by
+		-- different amounts on purpose -- a perfect mirror reads as
+		-- artificial, a small asymmetry reads as alive.
+		local tilt = math.rad(if side < 0 then browTilt else browTilt + 4)
+		addPart(ctx, "Brow", Enum.PartType.Block,
+			Vector3.new(s * 0.03, s * 0.035, s * 0.17), Color3.fromRGB(60, 40, 25),
+			faceF + s * 0.01, eyeU + s * 0.17, side * eyeGap,
+			CFrame.fromAxisAngle(ctx.forward, tilt))
 		-- Blush on the cheek, below and outside the eye.
 		addPart(ctx, "Blush", Enum.PartType.Ball, Vector3.new(s * 0.09, s * 0.09, s * 0.09),
 			Color3.fromRGB(255, 150, 170), faceF + s * 0.01, eyeU - s * 0.15, side * s * 0.3,
 			nil, Enum.Material.SmoothPlastic, 0.25)
 	end
-	-- A smile: wider than it is tall.
-	addPart(ctx, "Mouth", Enum.PartType.Ball, Vector3.new(s * 0.12, s * 0.08, s * 0.1),
-		Color3.fromRGB(40, 20, 20), faceF + s * 0.02, eyeU - s * 0.17, 0)
+	-- Nose: a small dash on the face centre line, so the face has
+	-- relief in the side view instead of a flat plate.
+	addPart(ctx, "Nose", Enum.PartType.Ball, Vector3.new(s * 0.07, s * 0.06, s * 0.07),
+		Color3.fromRGB(150, 80, 50), faceF + s * 0.02, eyeU - s * 0.08, 0)
+	-- A smile: wider than it is tall. A smirk tilts to one side; an
+	-- open mouth shows a tongue.
+	if mouthStyle == "smirk" then
+		addPart(ctx, "Mouth", Enum.PartType.Ball, Vector3.new(s * 0.12, s * 0.08, s * 0.1),
+			Color3.fromRGB(40, 20, 20), faceF + s * 0.02, eyeU - s * 0.17, s * 0.04,
+			CFrame.fromAxisAngle(ctx.forward, math.rad(14)))
+	elseif mouthStyle == "open" then
+		addPart(ctx, "Mouth", Enum.PartType.Ball, Vector3.new(s * 0.14, s * 0.1, s * 0.1),
+			Color3.fromRGB(40, 20, 20), faceF + s * 0.02, eyeU - s * 0.17, 0)
+		addPart(ctx, "Tongue", Enum.PartType.Ball, Vector3.new(s * 0.08, s * 0.05, s * 0.08),
+			Color3.fromRGB(255, 120, 140), faceF + s * 0.03, eyeU - s * 0.2, 0)
+	else
+		addPart(ctx, "Mouth", Enum.PartType.Ball, Vector3.new(s * 0.12, s * 0.08, s * 0.1),
+			Color3.fromRGB(40, 20, 20), faceF + s * 0.02, eyeU - s * 0.17, 0)
+	end
 end
 
 -- Arms: a cylinder leaning outward 25 degrees around the forward axis
--- plus a hand ball at its lower end, on each side. The lean sign
--- depends on the frame's handedness: h = +1 when (forward, up,
--- lateral) is right-handed (belt walkers), -1 when it is not (bases).
+-- plus a hand at its lower end, on each side. The lean sign depends on
+-- the frame's handedness: h = +1 when (forward, up, lateral) is
+-- right-handed (belt walkers), -1 when it is not (bases).
 -- shoulderU is the shoulder height, shoulderL the body's half-width.
-local function addArms(ctx: Ctx, shoulderU: number, shoulderL: number, armColor: Color3)
+-- The hand is a palm plus a curled finger and a thumb -- a mitten
+-- blob is the one thing a good low-poly character must never have.
+-- pose "up" raises both arms (dancing, cheering); the default pose
+-- hangs them at the sides.
+local function addArms(ctx: Ctx, shoulderU: number, shoulderL: number, armColor: Color3, pose: string?)
 	local s = ctx.s
 	local h = ctx.forward.X * ctx.lateral.Z - ctx.forward.Z * ctx.lateral.X
 	local armLen = s * 0.3
 	local armDia = s * 0.09
-	local tilt = math.rad(25)
+	local tiltVal = if pose == "up" then 155 else 25
+	local tilt = math.rad(tiltVal)
 	for _, side in ipairs({ -1, 1 }) do
-		local tiltDeg = -side * h * 25
+		local tiltDeg = -side * h * tiltVal
 		local rot = CFrame.fromAxisAngle(ctx.forward, math.rad(tiltDeg)) * CFrame.Angles(0, 0, math.rad(90))
 		addPart(ctx, "Arm", Enum.PartType.Cylinder, Vector3.new(armLen, armDia, armDia), armColor,
 			0, shoulderU - s * 0.1, side * (shoulderL + s * 0.03), rot)
@@ -774,6 +814,13 @@ local function addArms(ctx: Ctx, shoulderU: number, shoulderL: number, armColor:
 		local handL = side * (shoulderL + s * 0.03 + math.sin(tilt) * (armLen / 2 + s * 0.03))
 		addPart(ctx, "Hand", Enum.PartType.Ball, Vector3.new(s * 0.11, s * 0.11, s * 0.11), armColor,
 			s * 0.02, handU, handL)
+		-- Curled fingers: one short cylinder hanging below the palm,
+		-- slightly forward, so the hand reads as a hand at any angle.
+		addVerticalCylinder(ctx, "Finger", s * 0.06, s * 0.035, armColor,
+			s * 0.05, handU - s * 0.04, handL)
+		-- Thumb: a small ball on the palm's inner side.
+		addPart(ctx, "Thumb", Enum.PartType.Ball, Vector3.new(s * 0.05, s * 0.05, s * 0.05), armColor,
+			s * 0.02, handU + s * 0.01, handL - side * s * 0.05)
 	end
 end
 
@@ -797,10 +844,12 @@ local Builders: { [string]: (Ctx) -> BasePart } = {}
 
 Builders.soggy_fry = function(ctx: Ctx): BasePart
 	local s = ctx.s
-	-- Red fry box with a white opening lip and a gold stripe, five
-	-- fries poking out at different heights and tilts, ketchup on one.
+	-- Red fry box (matte cardboard) with a white opening lip and a
+	-- gold stripe, five fries poking out at different heights and
+	-- tilts, ketchup on one, ketchup dripping down the front.
 	local box = addPart(ctx, "FryBox", Enum.PartType.Block,
-		Vector3.new(s * 0.5, s * 0.45, s * 0.4), Color3.fromRGB(220, 45, 45), 0, s * 0.28, 0)
+		Vector3.new(s * 0.5, s * 0.45, s * 0.4), Color3.fromRGB(220, 45, 45), 0, s * 0.28, 0,
+		nil, Enum.Material.Fabric)
 	addPart(ctx, "BoxLip", Enum.PartType.Block,
 		Vector3.new(s * 0.52, s * 0.06, s * 0.42), Color3.fromRGB(255, 245, 235), 0, s * 0.5, 0)
 	addPart(ctx, "BoxStripe", Enum.PartType.Block,
@@ -815,6 +864,11 @@ Builders.soggy_fry = function(ctx: Ctx): BasePart
 	end
 	addPart(ctx, "Ketchup", Enum.PartType.Ball,
 		Vector3.new(s * 0.09, s * 0.09, s * 0.09), Color3.fromRGB(220, 40, 40), 0, s * 0.88, -s * 0.2)
+	for _, lat in ipairs({ -0.12, 0.14 }) do
+		addPart(ctx, "KetchupDrip", Enum.PartType.Ball,
+			Vector3.new(s * 0.07, s * 0.1, s * 0.07), Color3.fromRGB(200, 30, 30),
+			s * 0.26, s * 0.38, lat * s)
+	end
 	addFace(ctx, s * 0.21, s * 0.3)
 	addArms(ctx, s * 0.35, s * 0.22, Color3.fromRGB(220, 45, 45))
 	addLegs(ctx, s * 0.12, Color3.fromRGB(60, 40, 40), Color3.fromRGB(80, 50, 30))
@@ -836,10 +890,24 @@ Builders.noodle_ned = function(ctx: Ctx): BasePart
 		Vector3.new(s * 0.2, s * 0.2, s * 0.2), Color3.fromRGB(255, 250, 240), s * 0.08, s * 0.52, -s * 0.15)
 	addPart(ctx, "Yolk", Enum.PartType.Ball,
 		Vector3.new(s * 0.1, s * 0.1, s * 0.1), Color3.fromRGB(255, 170, 30), s * 0.13, s * 0.56, -s * 0.15)
-	-- One wisp of steam.
+	-- Chilli flakes and spring onion on the noodles: the bowl is
+	-- dressed, not plain.
+	for _, pos in ipairs({ { -0.18, 0.5, -0.05 }, { 0.2, 0.5, 0.18 } }) do
+		addPart(ctx, "ChiliFlake", Enum.PartType.Ball,
+			Vector3.new(s * 0.06, s * 0.06, s * 0.06), Color3.fromRGB(200, 40, 30),
+			pos[1] * s, pos[2] * s, pos[3] * s)
+	end
+	for _, pos in ipairs({ { -0.05, 0.52, 0.22 }, { 0.12, 0.52, -0.22 } }) do
+		addVerticalCylinder(ctx, "GreenOnion", s * 0.03, s * 0.06, Color3.fromRGB(80, 200, 90),
+			pos[1] * s, pos[2] * s, pos[3] * s)
+	end
+	-- Two wisps of steam.
 	addPart(ctx, "Steam", Enum.PartType.Ball,
 		Vector3.new(s * 0.14, s * 0.14, s * 0.14), Color3.fromRGB(255, 255, 255), 0, s * 0.85, 0,
 		nil, Enum.Material.SmoothPlastic, 0.5)
+	addPart(ctx, "Steam2", Enum.PartType.Ball,
+		Vector3.new(s * 0.11, s * 0.11, s * 0.11), Color3.fromRGB(255, 255, 255), -s * 0.12, s * 0.8, s * 0.08,
+		nil, Enum.Material.SmoothPlastic, 0.55)
 	for _, side in ipairs({ -1, 1 }) do
 		addVerticalCylinder(ctx, "Chopstick", s * 0.75, s * 0.05, Color3.fromRGB(120, 80, 40),
 			-s * 0.1, s * 0.65, side * s * 0.12, 18 * side)
@@ -853,23 +921,31 @@ end
 Builders.dancing_dumpling = function(ctx: Ctx): BasePart
 	local s = ctx.s
 	local body = addPart(ctx, "Dumpling", Enum.PartType.Ball,
-		Vector3.new(s * 0.8, s * 0.55, s * 0.8), ctx.color, 0, s * 0.32, 0)
+		Vector3.new(s * 0.8, s * 0.55, s * 0.8), ctx.color, 0, s * 0.32, 0,
+		nil, Enum.Material.Fabric)
 	-- Crimped pleats along the top seam.
 	for _, lat in ipairs({ -0.18, 0, 0.18 }) do
 		addPart(ctx, "Pleat", Enum.PartType.Ball,
 			Vector3.new(s * 0.12, s * 0.12, s * 0.12), Color3.fromRGB(240, 220, 170), s * 0.05, s * 0.56, lat * s)
 	end
-	-- Pink bow on top and a tutu skirt: she dances.
+	-- Pink bow on top and a tutu skirt: she dances. Two ruffle layers
+	-- so the skirt has depth, and earrings that catch the light.
 	for _, side in ipairs({ -1, 1 }) do
 		addPart(ctx, "Bow", Enum.PartType.Block,
 			Vector3.new(s * 0.18, s * 0.08, s * 0.12), Color3.fromRGB(255, 120, 170), 0, s * 0.62, side * s * 0.1)
+		addPart(ctx, "Earring", Enum.PartType.Ball,
+			Vector3.new(s * 0.06, s * 0.06, s * 0.06), Color3.fromRGB(255, 120, 170),
+			s * 0.36, s * 0.32, side * s * 0.42)
 	end
 	addPart(ctx, "BowKnot", Enum.PartType.Ball,
 		Vector3.new(s * 0.1, s * 0.1, s * 0.1), Color3.fromRGB(255, 120, 170), 0, s * 0.62, 0)
 	addVerticalCylinder(ctx, "Tutu", s * 0.05, s * 0.95, Color3.fromRGB(255, 150, 200), 0, s * 0.22, 0,
 		nil, Enum.Material.SmoothPlastic).Transparency = 0.15
-	addFace(ctx, s * 0.4, s * 0.35)
-	addArms(ctx, s * 0.35, s * 0.36, ctx.color)
+	addVerticalCylinder(ctx, "TutuRuffle", s * 0.04, s * 1.05, Color3.fromRGB(255, 180, 210), 0, s * 0.17, 0,
+		nil, Enum.Material.SmoothPlastic).Transparency = 0.3
+	-- Open laughing mouth, arms raised: she is mid-dance.
+	addFace(ctx, s * 0.4, s * 0.35, { mouth = "open", browTilt = 12 })
+	addArms(ctx, s * 0.35, s * 0.36, ctx.color, "up")
 	addLegs(ctx, s * 0.15, ctx.color, Color3.fromRGB(255, 120, 170))
 	return body
 end
@@ -877,7 +953,8 @@ end
 Builders.turbo_taco = function(ctx: Ctx): BasePart
 	local s = ctx.s
 	local shell = addPart(ctx, "Shell", Enum.PartType.Ball,
-		Vector3.new(s * 0.8, s * 0.5, s * 0.8), ctx.color, 0, s * 0.3, 0)
+		Vector3.new(s * 0.8, s * 0.5, s * 0.8), ctx.color, 0, s * 0.3, 0,
+		nil, Enum.Material.Fabric)
 	-- The folded edge across the top of the shell.
 	addPart(ctx, "ShellFold", Enum.PartType.Block,
 		Vector3.new(s * 0.5, s * 0.08, s * 0.7), Color3.fromRGB(220, 140, 20), 0, s * 0.52, 0)
@@ -894,7 +971,16 @@ Builders.turbo_taco = function(ctx: Ctx): BasePart
 			CFrame.Angles(0, math.rad(20), 0))
 	end
 	addVerticalCylinder(ctx, "Jalapeno", s * 0.05, s * 0.14, Color3.fromRGB(60, 170, 60), 0, s * 0.6, -s * 0.05)
-	addFace(ctx, s * 0.4, s * 0.32)
+	-- Hot sauce dripping down the shell, a sour-cream dollop, a lime
+	-- wedge on top: the taco is dressed, and he knows it (smirk).
+	addPart(ctx, "HotSauce", Enum.PartType.Ball,
+		Vector3.new(s * 0.08, s * 0.12, s * 0.08), Color3.fromRGB(200, 40, 20), s * 0.3, s * 0.28, -s * 0.2)
+	addPart(ctx, "SourCream", Enum.PartType.Ball,
+		Vector3.new(s * 0.14, s * 0.08, s * 0.14), Color3.fromRGB(255, 250, 245), s * 0.12, s * 0.58, s * 0.28)
+	addPart(ctx, "Lime", Enum.PartType.Block,
+		Vector3.new(s * 0.14, s * 0.05, s * 0.1), Color3.fromRGB(140, 220, 80), -s * 0.08, s * 0.6, s * 0.12,
+		CFrame.Angles(0, math.rad(25), 0))
+	addFace(ctx, s * 0.4, s * 0.32, { mouth = "smirk", browTilt = 6 })
 	addArms(ctx, s * 0.36, s * 0.36, ctx.color)
 	addLegs(ctx, s * 0.16, Color3.fromRGB(60, 40, 40), Color3.fromRGB(80, 50, 30))
 	return shell
@@ -918,11 +1004,24 @@ Builders.lord_lasagna = function(ctx: Ctx): BasePart
 	end
 	addPart(ctx, "Basil", Enum.PartType.Block,
 		Vector3.new(s * 0.15, s * 0.05, s * 0.15), Color3.fromRGB(60, 160, 60), 0, s * 0.55, 0)
+	-- An olive on top, one more cheese drip, and a pleated chef's hat
+	-- (cloth, not plastic): the lord is dressed for service.
+	addPart(ctx, "Olive", Enum.PartType.Ball,
+		Vector3.new(s * 0.09, s * 0.09, s * 0.09), Color3.fromRGB(40, 40, 30), -s * 0.12, s * 0.56, -s * 0.12)
+	addPart(ctx, "CheeseMelt", Enum.PartType.Ball,
+		Vector3.new(s * 0.08, s * 0.12, s * 0.08), Color3.fromRGB(255, 200, 60), s * 0.3, s * 0.3, -s * 0.05)
 	-- A lord wears a chef's hat.
-	addVerticalCylinder(ctx, "HatBrim", s * 0.12, s * 0.3, Color3.fromRGB(255, 255, 255), 0, s * 0.6, 0)
+	addVerticalCylinder(ctx, "HatBrim", s * 0.12, s * 0.3, Color3.fromRGB(255, 255, 255), 0, s * 0.6, 0,
+		nil, Enum.Material.Fabric)
 	addPart(ctx, "HatTop", Enum.PartType.Ball,
-		Vector3.new(s * 0.28, s * 0.2, s * 0.28), Color3.fromRGB(255, 255, 255), 0, s * 0.7, 0)
-	addFace(ctx, s * 0.28, s * 0.32)
+		Vector3.new(s * 0.28, s * 0.2, s * 0.28), Color3.fromRGB(255, 255, 255), 0, s * 0.7, 0,
+		nil, Enum.Material.Fabric)
+	for _, lat in ipairs({ -0.08, 0.08 }) do
+		addPart(ctx, "HatPleat", Enum.PartType.Ball,
+			Vector3.new(s * 0.06, s * 0.1, s * 0.06), Color3.fromRGB(235, 235, 235), 0, s * 0.72, lat * s,
+			nil, Enum.Material.Fabric)
+	end
+	addFace(ctx, s * 0.28, s * 0.32, { browTilt = 5 })
 	addArms(ctx, s * 0.35, s * 0.34, Color3.fromRGB(255, 230, 180))
 	addLegs(ctx, s * 0.16, Color3.fromRGB(60, 40, 40), Color3.fromRGB(80, 50, 30))
 	return cheese
@@ -945,6 +1044,23 @@ Builders.queen_queso = function(ctx: Ctx): BasePart
 	end
 	addPart(ctx, "CrownGem", Enum.PartType.Ball,
 		Vector3.new(s * 0.1, s * 0.1, s * 0.1), Color3.fromRGB(220, 40, 60), 0, s * 0.52, 0)
+	-- A royal cape behind the wheel, a gold necklace band across the
+	-- front, and ruby earrings: the queen is dressed, not just crowned.
+	addPart(ctx, "Cape", Enum.PartType.Block,
+		Vector3.new(s * 0.06, s * 0.4, s * 0.7), Color3.fromRGB(180, 30, 50), -s * 0.42, s * 0.3, 0,
+		CFrame.fromAxisAngle(ctx.lateral, math.rad(-8)), Enum.Material.Fabric)
+	-- A gold necklace draped across the wheel's front: three beads in
+	-- a shallow arc, the middle one hanging lowest.
+	for _, bead in ipairs({ { -0.22, 0.17 }, { 0, 0.11 }, { 0.22, 0.17 } }) do
+		addPart(ctx, "NecklaceBead", Enum.PartType.Ball,
+			Vector3.new(s * 0.06, s * 0.06, s * 0.06), Color3.fromRGB(255, 215, 0),
+			s * 0.43, s * bead[2], bead[1] * s, nil, Enum.Material.Metal)
+	end
+	for _, side in ipairs({ -1, 1 }) do
+		addPart(ctx, "Earring", Enum.PartType.Ball,
+			Vector3.new(s * 0.06, s * 0.06, s * 0.06), Color3.fromRGB(220, 40, 60),
+			s * 0.38, s * 0.25, side * s * 0.44)
+	end
 	-- A royal sceptre in her right hand (lateral + side).
 	addVerticalCylinder(ctx, "Sceptre", s * 0.4, s * 0.04, Color3.fromRGB(255, 215, 0), s * 0.02, s * 0.22, s * 0.48,
 		nil, Enum.Material.Metal)
@@ -973,7 +1089,20 @@ Builders.king_kebab = function(ctx: Ctx): BasePart
 	addPart(ctx, "Flame", Enum.PartType.Ball,
 		Vector3.new(s * 0.14, s * 0.14, s * 0.14), Color3.fromRGB(255, 120, 0), s * 0.2, s * 0.12, s * 0.15,
 		nil, Enum.Material.Neon)
-	addFace(ctx, s * 0.25, s * 0.32)
+	-- Flatbread wrapped behind the stack, grill marks seared across
+	-- the meat, and a wisp of smoke over the flame.
+	addPart(ctx, "Flatbread", Enum.PartType.Block,
+		Vector3.new(s * 0.08, s * 0.55, s * 0.5), Color3.fromRGB(230, 200, 150), -s * 0.28, s * 0.35, 0,
+		CFrame.fromAxisAngle(ctx.lateral, math.rad(10)), Enum.Material.Fabric)
+	for _, u in ipairs({ 0.28, 0.38 }) do
+		addPart(ctx, "GrillMark", Enum.PartType.Block,
+			Vector3.new(s * 0.02, s * 0.04, s * 0.4), Color3.fromRGB(90, 40, 20),
+			s * 0.26, s * u, 0, CFrame.fromAxisAngle(ctx.forward, math.rad(20)))
+	end
+	addPart(ctx, "Smoke", Enum.PartType.Ball,
+		Vector3.new(s * 0.12, s * 0.12, s * 0.12), Color3.fromRGB(200, 200, 200), s * 0.22, s * 0.3, s * 0.15,
+		nil, Enum.Material.SmoothPlastic, 0.6)
+	addFace(ctx, s * 0.25, s * 0.32, { browTilt = 5 })
 	addArms(ctx, s * 0.35, s * 0.28, ctx.color)
 	addLegs(ctx, s * 0.14, Color3.fromRGB(60, 40, 40), Color3.fromRGB(80, 50, 30))
 	return meat
@@ -981,7 +1110,8 @@ end
 
 Builders.baron_burger = function(ctx: Ctx): BasePart
 	local s = ctx.s
-	addVerticalCylinder(ctx, "BottomBun", s * 0.16, s * 0.78, Color3.fromRGB(220, 170, 110), 0, s * 0.12, 0)
+	addVerticalCylinder(ctx, "BottomBun", s * 0.16, s * 0.78, Color3.fromRGB(220, 170, 110), 0, s * 0.12, 0,
+		nil, Enum.Material.Fabric)
 	local patty = addVerticalCylinder(ctx, "Patty", s * 0.16, s * 0.82, ctx.color, 0, s * 0.28, 0)
 	addPart(ctx, "Cheese", Enum.PartType.Block,
 		Vector3.new(s * 0.85, s * 0.06, s * 0.85), Color3.fromRGB(255, 200, 60), 0, s * 0.38, 0,
@@ -994,12 +1124,23 @@ Builders.baron_burger = function(ctx: Ctx): BasePart
 		Vector3.new(s * 0.2, s * 0.2, s * 0.2), Color3.fromRGB(90, 200, 90), s * 0.3, s * 0.42, s * 0.2)
 	addVerticalCylinder(ctx, "TomatoSlice", s * 0.06, s * 0.7, Color3.fromRGB(220, 60, 60), 0, s * 0.44, 0)
 	addPart(ctx, "TopBun", Enum.PartType.Ball,
-		Vector3.new(s * 0.78, s * 0.35, s * 0.78), Color3.fromRGB(230, 180, 120), 0, s * 0.55, 0)
+		Vector3.new(s * 0.78, s * 0.35, s * 0.78), Color3.fromRGB(230, 180, 120), 0, s * 0.55, 0,
+		nil, Enum.Material.Fabric)
 	for _, lat in ipairs({ -0.12, 0, 0.12 }) do
 		addPart(ctx, "Sesame", Enum.PartType.Ball,
 			Vector3.new(s * 0.06, s * 0.06, s * 0.06), Color3.fromRGB(255, 245, 220), s * 0.15, s * 0.72, lat * s)
 	end
-	addFace(ctx, s * 0.41, s * 0.28)
+	-- A pickle slice and an onion ring on the patty, a mustard drip
+	-- down the front, two more sesame seeds: the baron is stacked.
+	addVerticalCylinder(ctx, "Pickle", s * 0.04, s * 0.2, Color3.fromRGB(90, 170, 70), s * 0.2, s * 0.5, -s * 0.18)
+	addVerticalCylinder(ctx, "OnionRing", s * 0.03, s * 0.3, Color3.fromRGB(255, 250, 240), s * 0.1, s * 0.36, -s * 0.2)
+	addPart(ctx, "MustardDrip", Enum.PartType.Ball,
+		Vector3.new(s * 0.08, s * 0.11, s * 0.08), Color3.fromRGB(255, 215, 40), s * 0.36, s * 0.32, -s * 0.32)
+	for _, lat in ipairs({ -0.2, 0.2 }) do
+		addPart(ctx, "Sesame", Enum.PartType.Ball,
+			Vector3.new(s * 0.06, s * 0.06, s * 0.06), Color3.fromRGB(255, 245, 220), -s * 0.05, s * 0.7, lat * s)
+	end
+	addFace(ctx, s * 0.41, s * 0.28, { browTilt = 5 })
 	addArms(ctx, s * 0.35, s * 0.38, Color3.fromRGB(230, 180, 120))
 	addLegs(ctx, s * 0.16, Color3.fromRGB(60, 40, 40), Color3.fromRGB(80, 50, 30))
 	return patty
@@ -1027,6 +1168,20 @@ Builders.eternal_ramen = function(ctx: Ctx): BasePart
 	addPart(ctx, "Steam", Enum.PartType.Ball,
 		Vector3.new(s * 0.16, s * 0.16, s * 0.16), Color3.fromRGB(255, 255, 255), 0, s * 0.85, 0,
 		nil, Enum.Material.SmoothPlastic, 0.5)
+	addPart(ctx, "Steam2", Enum.PartType.Ball,
+		Vector3.new(s * 0.12, s * 0.12, s * 0.12), Color3.fromRGB(255, 255, 255), s * 0.14, s * 0.82, -s * 0.1,
+		nil, Enum.Material.SmoothPlastic, 0.55)
+	-- Nori standing in the broth, a chashu slice, bamboo shoots, and
+	-- a swirl of chilli oil: the eternal bowl is fully dressed.
+	addPart(ctx, "Nori", Enum.PartType.Block,
+		Vector3.new(s * 0.04, s * 0.3, s * 0.25), Color3.fromRGB(30, 60, 30), -s * 0.2, s * 0.55, -s * 0.2,
+		CFrame.Angles(0, math.rad(15), 0))
+	addVerticalCylinder(ctx, "Chashu", s * 0.06, s * 0.24, Color3.fromRGB(255, 200, 190), s * 0.18, s * 0.5, s * 0.22)
+	addPart(ctx, "BambooShoot", Enum.PartType.Block,
+		Vector3.new(s * 0.16, s * 0.05, s * 0.06), Color3.fromRGB(230, 200, 110), -s * 0.05, s * 0.52, s * 0.28,
+		CFrame.Angles(0, math.rad(-20), 0))
+	addPart(ctx, "ChiliOil", Enum.PartType.Ball,
+		Vector3.new(s * 0.12, s * 0.06, s * 0.12), Color3.fromRGB(200, 50, 20), -s * 0.22, s * 0.5, s * 0.05)
 	for _, side in ipairs({ -1, 1 }) do
 		addVerticalCylinder(ctx, "Chopstick", s * 0.75, s * 0.05, Color3.fromRGB(90, 60, 40),
 			-s * 0.15, s * 0.65, side * s * 0.1, 15 * side)
@@ -1212,8 +1367,8 @@ Weather.DEFINITIONS = {
 			clockTime = 14,
 			fogColor = Color3.fromRGB(178, 216, 255),
 			fogEnd = 420,
-			ambient = Color3.fromRGB(51, 51, 51),
-			outdoorAmbient = Color3.fromRGB(102, 102, 115),
+			ambient = Color3.fromRGB(64, 58, 48),
+			outdoorAmbient = Color3.fromRGB(116, 112, 122),
 			atmoDensity = 0.25,
 			atmoColor = Color3.fromRGB(191, 216, 255),
 			atmoHaze = 1.5,
@@ -1232,8 +1387,8 @@ Weather.DEFINITIONS = {
 			clockTime = 14,
 			fogColor = Color3.fromRGB(140, 158, 184),
 			fogEnd = 300,
-			ambient = Color3.fromRGB(36, 38, 46),
-			outdoorAmbient = Color3.fromRGB(71, 77, 87),
+			ambient = Color3.fromRGB(46, 48, 56),
+			outdoorAmbient = Color3.fromRGB(90, 96, 106),
 			atmoDensity = 0.4,
 			atmoColor = Color3.fromRGB(153, 173, 204),
 			atmoHaze = 2,
@@ -1252,8 +1407,8 @@ Weather.DEFINITIONS = {
 			clockTime = 15,
 			fogColor = Color3.fromRGB(64, 71, 89),
 			fogEnd = 200,
-			ambient = Color3.fromRGB(18, 18, 26),
-			outdoorAmbient = Color3.fromRGB(38, 41, 51),
+			ambient = Color3.fromRGB(30, 30, 40),
+			outdoorAmbient = Color3.fromRGB(50, 54, 66),
 			atmoDensity = 0.55,
 			atmoColor = Color3.fromRGB(102, 115, 153),
 			atmoHaze = 2.5,
@@ -1272,8 +1427,8 @@ Weather.DEFINITIONS = {
 			clockTime = 14,
 			fogColor = Color3.fromRGB(199, 204, 209),
 			fogEnd = 80,
-			ambient = Color3.fromRGB(46, 46, 51),
-			outdoorAmbient = Color3.fromRGB(77, 77, 82),
+			ambient = Color3.fromRGB(58, 58, 62),
+			outdoorAmbient = Color3.fromRGB(88, 88, 94),
 			atmoDensity = 0.7,
 			atmoColor = Color3.fromRGB(204, 209, 217),
 			atmoHaze = 3,
@@ -1292,8 +1447,8 @@ Weather.DEFINITIONS = {
 			clockTime = 14,
 			fogColor = Color3.fromRGB(217, 230, 255),
 			fogEnd = 260,
-			ambient = Color3.fromRGB(89, 102, 128),
-			outdoorAmbient = Color3.fromRGB(128, 140, 166),
+			ambient = Color3.fromRGB(106, 118, 142),
+			outdoorAmbient = Color3.fromRGB(142, 154, 180),
 			atmoDensity = 0.35,
 			atmoColor = Color3.fromRGB(217, 230, 255),
 			atmoHaze = 2,

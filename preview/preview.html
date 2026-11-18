@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Steal a Snack — 3D preview</title>
+<style>
+  html,body{margin:0;padding:0;width:1280px;height:720px;overflow:hidden;background:#a8d0f0;font-family:Arial,Helvetica,sans-serif;}
+  #c{display:block;width:1280px;height:720px;}
+  .chip{position:absolute;color:#fff;background:rgba(10,10,14,.62);border-radius:8px;padding:6px 12px;}
+  #title{top:14px;left:14px;font-size:20px;font-weight:bold;letter-spacing:.5px;}
+  #weather{top:14px;right:14px;font-size:19px;font-weight:bold;background:rgba(180,120,20,.78);}
+  #note{bottom:12px;left:14px;font-size:13px;}
+</style>
+</head>
+<body>
+<canvas id="c" width="1280" height="720"></canvas>
+<div class="chip" id="title">STEAL A SNACK &middot; Roblox preview</div>
+<div class="chip" id="weather">&#9728;&#65039; SUNNY &mdash; Clear skies</div>
+<div class="chip" id="note">Rekonstruksi Three.js dari data game (CharacterFactory + default.project.json) &mdash; bukan screenshot Roblox Studio. Cuaca: SUNNY.</div>
+<script src="three.min.js"></script>
+<script>
+// ---------- helpers ----------
+const C255 = (r,g,b)=> new THREE.Color(r/255, g/255, b/255);
+const C01  = (r,g,b)=> new THREE.Color(r, g, b);
+const unitBox  = new THREE.BoxGeometry(1,1,1);
+const unitBall = new THREE.SphereGeometry(1, 28, 20);
+const unitCyl  = new THREE.CylinderGeometry(1, 1, 1, 28);
+
+function mat(color, o={}) {
+  const m = new THREE.MeshStandardMaterial({
+    color, roughness: o.rough ?? 0.55, metalness: o.metal ?? 0.05 });
+  if (o.neon) { m.emissive = color.clone(); m.emissiveIntensity = 0.9; }
+  if (o.opacity !== undefined) { m.transparent = true; m.opacity = o.opacity; }
+  return m;
+}
+function box(w,h,d, color, x,y,z, o={}) {
+  const mesh = new THREE.Mesh(unitBox, mat(color,o));
+  mesh.scale.set(w,h,d); mesh.position.set(x,y,z);
+  if (o.rotY) mesh.rotation.y = o.rotY;
+  if (o.rotZ) mesh.rotation.z = o.rotZ;
+  if (o.rotX) mesh.rotation.x = o.rotX;
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  (o.parent || scene).add(mesh); return mesh;
+}
+// ball: sx,sy,sz are full diameters (Roblox Size), like the Luau code
+function ball(sx,sy,sz, color, x,y,z, o={}) {
+  const mesh = new THREE.Mesh(unitBall, mat(color,o));
+  mesh.scale.set(sx/2, sy/2, sz/2); mesh.position.set(x,y,z);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  (o.parent || scene).add(mesh); return mesh;
+}
+// cyl: height h, diameter d — vertical (Roblox addVerticalCylinder)
+function cyl(h, d, color, x,y,z, o={}) {
+  const mesh = new THREE.Mesh(unitCyl, mat(color,o));
+  mesh.scale.set(d/2, h, d/2); mesh.position.set(x,y,z);
+  if (o.rotZ) mesh.rotation.z = o.rotZ;
+  if (o.rotX) mesh.rotation.x = o.rotX;
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  (o.parent || scene).add(mesh); return mesh;
+}
+
+// ---------- renderer / scene ----------
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(1280, 720);
+renderer.setPixelRatio(1);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+// SUNNY weather: warm blue sky, far fog (FogEnd 420 like the game).
+scene.background = new THREE.Color(0.55, 0.78, 1.0);
+scene.fog = new THREE.Fog(new THREE.Color(0.7, 0.85, 1), 150, 420);
+
+const camera = new THREE.PerspectiveCamera(55, 1280/720, 0.1, 1000);
+// Front 3/4 view from the north-east: the walkers face +X (east), so
+// this angle shows their faces, arms and front detail. North side is
+// clear (the burger on Base3 sits south and cannot block the shot).
+camera.position.set(40, 24, 40);
+camera.lookAt(-5, 1, 0);
+
+// SUNNY light: warm key sun + cool fill.
+scene.add(new THREE.HemisphereLight(0xfff4dd, 0x7a8a5a, 0.9));
+const sun = new THREE.DirectionalLight(0xfff0cd, 1.35);
+sun.position.set(60, 90, 40);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -100; sun.shadow.camera.right = 100;
+sun.shadow.camera.top = 100; sun.shadow.camera.bottom = -100;
+sun.shadow.camera.far = 300; sun.shadow.bias = -0.0004;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xbfd9ff, 0.45);
+fill.position.set(-40, 30, -50);
+scene.add(fill);
+
+// ---------- SUNNY: clear sky, no particles ----------
+
+// ---------- ground & belt (from default.project.json) ----------
+// SUNNY weather: green grass baseplate.
+box(512, 20, 512, C01(0.32,0.68,0.28), 0, -10, 0, {rough:0.95});           // Baseplate, grass
+box(132, 2, 10, C01(0.15,0.15,0.18), 0, 1, 0, {metal:0.5, rough:0.4});     // ConveyorBelt, DiamondPlate
+box(132, 1, 1, C01(0.6,0.6,0.65), 0, 2.5, -5.5, {metal:0.6, rough:0.35});  // Rail north
+box(132, 1, 1, C01(0.6,0.6,0.65), 0, 2.5, 5.5, {metal:0.6, rough:0.35});   // Rail south
+box(132, 0.15, 0.3, C01(1,0.85,0.2), 0, 2.1, -5, {neon:true});             // BeltTrim north
+box(132, 0.15, 0.3, C01(1,0.85,0.2), 0, 2.1, 5, {neon:true});              // BeltTrim south
+for (const x of [-44,-22,0,22,44])
+  box(8, 0.2, 8, C01(1,0.8,0.2), x, 2.05, 0, {neon:true});                  // Neon stripes
+box(4, 4, 12, C01(0.3,0.3,0.35), -68, 1, 0, {metal:0.5, rough:0.4});        // ConveyorStart
+box(4, 4, 12, C01(0.3,0.3,0.35), 68, 1, 0, {metal:0.5, rough:0.4});         // ConveyorEnd
+box(130, 0.4, 5, C01(0.85,0.8,0.65), 0, 0.2, -7.5, {rough:0.95});           // Path north
+box(130, 0.4, 5, C01(0.85,0.8,0.65), 0, 0.2, 7.5, {rough:0.95});            // Path south
+box(10, 0.4, 8, C01(0.85,0.8,0.65), -72, 0.2, 0, {rough:0.95});             // Path spawn->belt
+// belt polish: chevrons (">" pointing +X), dark side skirts, end-cap strips
+function chevron(x, y, z, col) {
+  box(2.5, 0.3, 0.5, col, x, y, z + 0.75, {neon:true, rotY: 37*Math.PI/180});
+  box(2.5, 0.3, 0.5, col, x, y, z - 0.75, {neon:true, rotY: -37*Math.PI/180});
+}
+for (const cx of [-33,-11,11,33]) chevron(cx, 2.12, 0, C01(1,0.8,0.2));
+box(132, 1.9, 0.2, C01(0.2,0.2,0.25), 0, 0.95, -5.2, {metal:0.5, rough:0.4}); // skirt north
+box(132, 1.9, 0.2, C01(0.2,0.2,0.25), 0, 0.95, 5.2, {metal:0.5, rough:0.4});  // skirt south
+box(4, 0.3, 12, C01(0.2,0.8,1), -68, 3.1, 0, {neon:true});                 // end-cap strip, spawn (cyan)
+box(4, 0.3, 12, C01(1,0.8,0.2), 68, 3.1, 0, {neon:true});                  // end-cap strip, end (gold)
+box(1, 0.2, 10, C01(0.2,0.8,1), -66, 2.15, 0, {neon:true});                // portal floor pad, spawn
+box(1, 0.2, 10, C01(1,0.8,0.2), 66, 2.15, 0, {neon:true});                 // portal floor pad, end
+
+// spawn area (west, mostly out of frame but present)
+box(20, 0.4, 20, C01(0.98,0.88,0.5), -84, 0.2, 0);
+box(16, 1, 16, C01(0.95,0.85,0.4), -84, 0.5, 0, {opacity:0.75});
+// spawn ring (cyan outline) + direction arrows toward the belt
+box(18, 0.15, 0.6, C01(0.2,0.8,1), -84, 0.45, -9, {neon:true});
+box(18, 0.15, 0.6, C01(0.2,0.8,1), -84, 0.45, 9, {neon:true});
+box(0.6, 0.15, 18, C01(0.2,0.8,1), -93, 0.45, 0, {neon:true});
+box(0.6, 0.15, 18, C01(0.2,0.8,1), -75, 0.45, 0, {neon:true});
+for (const ax of [-75,-72,-69]) chevron(ax, 0.45, 0, C01(1,0.8,0.2));
+// grass tufts (ground texture variation)
+for (const [gx,gz,gs,gr,gg,gb] of [[-35,32,1.5,0.3,0.7,0.25],[10,35,2,0.4,0.8,0.3],[40,-32,1.5,0.3,0.7,0.25],[-55,-35,2,0.4,0.8,0.3],[65,30,1.5,0.3,0.7,0.25],[-20,-35,2,0.4,0.8,0.3],[25,45,1.5,0.3,0.7,0.25],[-65,35,2,0.4,0.8,0.3]])
+  ball(gs, gs, gs, C01(gr,gg,gb), gx, 0.8, gz);
+// arch finials + wave beacon base
+ball(1.5, 1.5, 1.5, C01(1,0.85,0.2), 0, 9.8, -5.5, {neon:true});
+ball(1.5, 1.5, 1.5, C01(1,0.85,0.2), 0, 9.8, 5.5, {neon:true});
+cyl(0.5, 6, C01(0.25,0.25,0.3), -84, 0.25, 12, {metal:0.5, rough:0.4});
+
+// ---------- 8 bases + walls + flags ----------
+const BASES = [
+  [-45,-14, 0.95,0.55,0.35], [-15,-14, 0.35,0.6,0.95],
+  [ 15,-14, 0.95,0.85,0.3],  [ 45,-14, 0.55,0.85,0.4],
+  [-45, 14, 0.85,0.45,0.85], [-15, 14, 0.4,0.85,0.85],
+  [ 15, 14, 0.95,0.45,0.45], [ 45, 14, 0.7,0.7,0.75],
+];
+for (const [bx,bz, r,g,b] of BASES) {
+  const col = C01(r,g,b);
+  box(22, 1, 12, col, bx, 0.5, bz, {rough:0.85});                 // platform, WoodPlanks, top Y=1
+  const dark = new THREE.Color(r*0.55, g*0.55, b*0.55);   // front edge trim, darker shade
+  box(22.4, 0.15, 0.6, dark, bx, 1.05, bz > 0 ? 8.2 : -8.2);
+  box(22, 5, 1, col, bx, 3, bz > 0 ? 20.5 : -20.5, {rough:0.8}); // back wall
+  box(4, 2, 0.2, C01(0.98,0.95,0.85), bx, 4.2, bz > 0 ? 19.85 : -19.85); // number plate
+  const px = bx - 10, pz = bz > 0 ? 19.5 : -19.5;         // flag pole
+  box(0.5, 7, 0.5, C01(0.4,0.4,0.45), px, 4, pz);
+  box(3.2, 2, 0.2, col, px + 1.6, 6.5, pz, {rough:0.9});  // flag, Fabric
+}
+
+// ---------- arches & portals ----------
+function arch(x, z1, z2, col, beamY) {
+  box(1.5, 8, 1.5, col, x, 5, z1, {neon:true});
+  box(1.5, 8, 1.5, col, x, 5, z2, {neon:true});
+  box(1.5, 1.5, Math.abs(z2-z1)+1.5, col, x, beamY, (z1+z2)/2, {neon:true});
+}
+arch(-66, -6, 6, C01(0.2,0.8,1), 9);   // spawn portal (cyan)
+arch( 66, -6, 6, C01(1,0.8,0.2), 9);   // end portal (gold)
+arch(  0, -5.5, 5.5, C01(1,0.8,0.2), 9); // centre arch (gold)
+ball(3, 3, 3, C01(1,0.95,0.3), 0, 10.8, 0, {neon:true}); // arch star
+
+// ---------- set dressing ----------
+for (const [tx,tz,ls,ts,ty] of [[-60,48,11,6,13.5],[60,-48,9,6,13.5],[80,-20,7,5,13],[-80,30,9,5,13]]) { // trees (varied)
+  cyl(6, 2, C01(0.5,0.3,0.1), tx, 3, tz, {rough:0.9});
+  ball(ls, ls, ls, C01(0.2,0.65,0.25), tx, 8, tz);
+  ball(ts, ts, ts, C01(0.35,0.75,0.3), tx, ty, tz); // second-tier canopy
+}
+ball(5, 3.75, 5, C01(0.2,0.6,0.25), -58, 1.875, 44);   // bushes (varied)
+ball(4, 3, 4, C01(0.2,0.6,0.25), 58, 1.5, -44);
+ball(4, 3, 4, C01(0.2,0.6,0.25), -30, 1.5, 48);
+ball(3, 2.5, 3, C01(0.2,0.6,0.25), 30, 1.25, -48);
+ball(0.8, 0.8, 0.8, C01(1,0.5,0.7), 58, 3.1, -44);   // tiny flowers on bushes
+ball(0.8, 0.8, 0.8, C01(1,1,1), 30, 2.6, -48);
+for (const [lx,lz] of [[-50,-8],[-17,8],[17,-8],[50,8]]) {        // lamps
+  cyl(6, 1, C01(0.25,0.25,0.3), lx, 3, lz, {metal:0.6, rough:0.4});
+  ball(2, 2, 2, C01(1,0.9,0.5), lx, 6.5, lz, {neon:true});
+}
+// stall 1 (west): counter, posts, red roof, awning stripes, goods
+box(10, 4, 4, C01(0.7,0.45,0.2), -70, 2, -22, {rough:0.8});
+box(1, 5, 1, C01(0.6,0.35,0.15), -74.5, 4, -24.5, {rough:0.8});
+box(1, 5, 1, C01(0.6,0.35,0.15), -65.5, 4, -24.5, {rough:0.8});
+box(12, 1, 7, C01(0.95,0.3,0.3), -70, 6, -22, {rough:0.9});
+box(6, 0.3, 0.5, C01(0.9,0.2,0.2), -72.5, 6.6, -18.6);
+box(6, 0.3, 0.5, C01(1,1,1), -67.5, 6.6, -18.6);
+box(1.5, 1.5, 1.5, C01(0.9,0.3,0.3), -72, 4.75, -22);
+box(1.5, 1.5, 1.5, C01(1,0.85,0.3), -68, 4.75, -22);
+// stall 2 (east, in frame): counter, posts, blue roof, awning stripes, goods
+box(10, 4, 4, C01(0.7,0.45,0.2), 70, 2, 22, {rough:0.8});
+box(1, 5, 1, C01(0.6,0.35,0.15), 65.5, 4, 19.5, {rough:0.8});
+box(1, 5, 1, C01(0.6,0.35,0.15), 74.5, 4, 19.5, {rough:0.8});
+box(12, 1, 7, C01(0.3,0.6,0.95), 70, 6, 22, {rough:0.9});
+box(6, 0.3, 0.5, C01(0.9,0.2,0.2), 67.5, 6.6, 18.6);
+box(6, 0.3, 0.5, C01(1,1,1), 72.5, 6.6, 18.6);
+box(1.5, 1.5, 1.5, C01(0.9,0.3,0.3), 68, 4.75, 22);
+box(1.5, 1.5, 1.5, C01(1,0.85,0.3), 72, 4.75, 22);
+// giant burger (south, background)
+cyl(0.5, 13, C01(0.95,0.95,0.9), 0, 0.25, 58);                 // plate
+ball(10, 6, 10, C01(0.95,0.7,0.35), 0, 3, 58);
+cyl(0.6, 11, C01(0.4,0.8,0.3), 0, 5, 58);                      // lettuce layer
+ball(9, 4, 9, C01(0.85,0.55,0.25), 0, 6, 58);
+for (let k = 0; k < 5; k++) {                                    // sesame seeds
+  const a = k * 72 * Math.PI/180;
+  ball(0.6, 0.6, 0.6, C01(1,0.98,0.9), 2.5*Math.cos(a), 7.7, 58 + 2.5*Math.sin(a));
+}
+// giant noodle bowl (north, background)
+cyl(6, 10, C01(0.85,0.25,0.3), 0, 3, -58);
+cyl(1, 8.5, C01(1,0.8,0.3), 0, 5.5, -58, {neon:true});
+ball(3, 3, 3, C01(1,0.85,0.4), -2, 6.5, -59);
+ball(3, 3, 3, C01(1,0.85,0.4), 2, 6.5, -57);
+ball(3, 3, 3, C01(1,0.85,0.4), 0, 7, -58);
+ball(2, 2, 2, C01(1,1,1), 1.5, 6.6, -58);                       // egg
+ball(1, 1, 1, C01(1,0.7,0.15), 1.5, 7.3, -58);                   // yolk
+ball(1.5, 1.5, 1.5, C01(1,1,1), -1, 8.5, -58, {opacity:0.5});    // steam
+ball(1.5, 1.5, 1.5, C01(1,1,1), 1, 9.5, -58, {opacity:0.5});
+box(11, 0.8, 0.8, C01(0.6,0.35,0.15), 0, 6.6, -58.5, {rough:0.8, rotZ: 12*Math.PI/180});  // chopsticks on the rim
+box(11, 0.8, 0.8, C01(0.6,0.35,0.15), 0, 6.6, -57.5, {rough:0.8, rotZ: -10*Math.PI/180});
+// snack tower (east-north)
+cyl(0.5, 10, C01(0.95,0.95,0.9), 75, 0.25, -48);                // plate
+cyl(4, 8, C01(0.95,0.2,0.2), 75, 2, -48);
+ball(4, 6, 6, C01(1,0.8,0.25), 75, 5.5, -48);
+ball(3, 4, 4, C01(1,0.55,0.15), 75, 8.5, -48);
+ball(1.5, 1.5, 1.5, C01(0.9,0.1,0.2), 75, 10.3, -48);           // cherry on top
+box(0.8, 5, 0.8, C01(0.7,0.45,0.2), 77, 10, -48, {rough:0.8, rotZ: 20*Math.PI/180}); // wafer stick
+// flowers (petals are bright, not glowing — Neon is for light sources only)
+for (const [fx,fz,fr,fg,fb] of [[-30,26,1,0.4,0.6],[0,26,0.7,0.4,1],[30,26,1,1,1],
+                               [-30,-26,1,0.6,0.2],[0,-26,1,0.3,0.3],[30,-26,0.4,0.6,1]]) {
+  cyl(1.4, 0.3, C01(0.3,0.6,0.25), fx, 0.7, fz);              // stem
+  ball(1, 1, 1, C01(fr,fg,fb), fx, 1.5, fz);                  // petals
+  ball(0.5, 0.5, 0.5, C01(1,0.85,0.2), fx, 1.6, fz);          // centre
+}
+// clouds (white capped at 0.92 — no pure white anywhere)
+for (const [cx,cy,cz,cs] of [[-40,32,-60,16],[30,35,55,18],[70,30,-55,14]])
+  ball(cs, cs*0.4, cs*0.65, C01(0.92,0.92,0.95), cx, cy, cz, {opacity:0.85});
+for (const [px,py,pz,ps] of [[-46,33,-60,8],[-34,33,-60,7],[23,36,55,9],[38,36,55,8],[65,31,-55,7],[76,31,-55,6],[-10,34,60,7],[50,33,-60,8]])
+  ball(ps, ps*0.4, ps*0.65, C01(0.92,0.92,0.95), px, py, pz, {opacity:0.85}); // cloud puffs
+// granite boulders + a corner pond + two extra bushes (nature variety)
+for (const [bx,by,bz,bs] of [[-78,2.5,-40,7],[-40,2,-48,6],[40,1.5,48,4]])
+  ball(bs, bs*0.8, bs*0.9, C01(0.45,0.45,0.48), bx, by, bz, {rough:0.95});
+box(16, 0.4, 11, C01(0.85,0.75,0.55), 75, 0.2, 40, {rough:0.95});   // pond rim, sand
+box(14, 0.6, 9, C01(0.35,0.65,0.95), 75, 0.3, 40, {rough:0.15, opacity:0.75}); // pond water
+ball(4, 3, 4, C01(0.22,0.62,0.28), -35, 1.5, 48);
+ball(3.5, 2.6, 3.5, C01(0.25,0.68,0.3), 55, 1.3, 48);
+
+// ---------- characters (ported from CharacterFactory.luau) ----------
+// Local frame: f = +X (forward, walking direction), u = +Y, l = +Z.
+const RARITY_DISC = {
+  Common:    { c: C255(25,25,30),   neon:false, op:0.85 },
+  Rare:      { c: C255(80,170,255),  neon:false, op:0.80 },
+  Epic:      { c: C255(180,90,255),  neon:true,  op:0.70 },
+  Legendary: { c: C255(255,170,0),   neon:true,  op:0.70 },
+  Mythic:    { c: C255(255,60,120),  neon:true,  op:0.70 },
+};
+const MUTATION_COLORS = {
+  Rainbow: C255(255,100,220), Diamond: C255(120,220,255), Golden: C255(255,215,0),
+};
+function makeLabelSprite(line1, line2, accentCss) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 144;
+  const g = cv.getContext('2d');
+  g.fillStyle = 'rgba(15,15,18,0.72)';
+  g.beginPath();
+  g.moveTo(32,6); g.lineTo(480,6); g.quadraticCurveTo(506,6,506,32);
+  g.lineTo(506,112); g.quadraticCurveTo(506,138,480,138);
+  g.lineTo(32,138); g.quadraticCurveTo(6,138,6,112);
+  g.lineTo(6,32); g.quadraticCurveTo(6,6,32,6); g.closePath(); g.fill();
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#ffffff'; g.font = 'bold 52px Arial, sans-serif';
+  g.fillText(line1, 256, 50);
+  g.fillStyle = accentCss; g.font = 'bold 40px Arial, sans-serif';
+  g.fillText(line2, 256, 106);
+  const tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  spr.scale.set(6.4, 1.8, 1);
+  return spr;
+}
+
+function buildCharacter(spec) {
+  const s = spec.s;
+  const g = new THREE.Group();
+  g.position.set(spec.x, spec.groundY, spec.z || 0);
+  if (spec.rotY) g.rotation.y = spec.rotY;
+  scene.add(g);
+  const P = (o)=> ({ parent: g, ...o }); // parent all parts to the character group
+  const b  = (w,h,d,c,f,u,l,o={})=> box(w,h,d,c, f,u,l, P(o));
+  const bl = (sx,sy,sz,c,f,u,l,o={})=> ball(sx,sy,sz,c, f,u,l, P(o));
+  const cy = (h,d,c,f,u,l,o={})=> cyl(h,d,c, f,u,l, P(o));
+
+  // ground disc (rarity colour)
+  const disc = RARITY_DISC[spec.rarity];
+  cy(0.25, s*1.7, disc.c, 0, 0.13, 0, { neon: disc.neon, opacity: disc.op });
+
+  // expressive face: eyes with iris + pupils + sparkle + brows + nose
+  // + blush + smile, on the +X front. opts.mouth: "smile" | "open" |
+  // "smirk"; opts.browTilt tilts the brows for expression.
+  const face = (faceF, eyeU, opts={}) => {
+    const eyeR = s*0.11, gap = s*0.17;
+    const browTilt = opts.browTilt ?? 8;
+    for (const side of [-1,1]) {
+      bl(eyeR*2, eyeR*2, eyeR*2, C255(255,255,255), faceF, eyeU, side*gap);
+      bl(eyeR*1.4, eyeR*1.4, eyeR*1.4, C255(90,55,25), faceF + s*0.04, eyeU, side*gap);
+      bl(eyeR*0.9, eyeR*0.9, eyeR*0.9, C255(20,20,20), faceF + s*0.07, eyeU, side*gap);
+      bl(s*0.04, s*0.04, s*0.04, C255(255,255,255), faceF + s*0.1, eyeU + s*0.03, side*gap - s*0.02);
+      b(s*0.03, s*0.035, s*0.17, C255(60,40,25), faceF + s*0.01, eyeU + s*0.17, side*gap,
+        { rotX: (side < 0 ? browTilt : browTilt + 4)*Math.PI/180 });
+      bl(s*0.09, s*0.09, s*0.09, C255(255,150,170), faceF + s*0.01, eyeU - s*0.15, side*s*0.3, {opacity:0.75});
+    }
+    bl(s*0.07, s*0.06, s*0.07, C255(150,80,50), faceF + s*0.02, eyeU - s*0.08, 0);
+    if (opts.mouth === 'smirk') {
+      bl(s*0.12, s*0.08, s*0.1, C255(40,20,20), faceF + s*0.02, eyeU - s*0.17, s*0.04, { rotX: 14*Math.PI/180 });
+    } else if (opts.mouth === 'open') {
+      bl(s*0.14, s*0.1, s*0.1, C255(40,20,20), faceF + s*0.02, eyeU - s*0.17, 0);
+      bl(s*0.08, s*0.05, s*0.08, C255(255,120,140), faceF + s*0.03, eyeU - s*0.2, 0);
+    } else {
+      bl(s*0.12, s*0.08, s*0.1, C255(40,20,20), faceF + s*0.02, eyeU - s*0.17, 0);
+    }
+  };
+
+  // arms: cylinders leaning outward 25 deg around the forward (+X) axis
+  // + hands with a curled finger and a thumb. pose "up" raises both arms.
+  const arms = (shoulderU, shoulderL, color, pose) => {
+    const tiltVal = pose === 'up' ? 155 : 25;
+    const tilt = tiltVal*Math.PI/180, armLen = s*0.3, armDia = s*0.09;
+    for (const side of [-1,1]) {
+      cy(armLen, armDia, color, 0, shoulderU - s*0.1, side*(shoulderL + s*0.03), { rotX: -side*tilt });
+      const handU = shoulderU - s*0.1 - Math.cos(tilt)*(armLen/2 + s*0.03);
+      const handL = side*(shoulderL + s*0.03 + Math.sin(tilt)*(armLen/2 + s*0.03));
+      bl(s*0.11, s*0.11, s*0.11, color, s*0.02, handU, handL);
+      cy(s*0.06, s*0.035, color, s*0.05, handU - s*0.04, handL);
+      bl(s*0.05, s*0.05, s*0.05, color, s*0.02, handU + s*0.01, handL - side*s*0.05);
+    }
+  };
+  // legs: short cylinders + shoes (flattened balls, longer forward)
+  const legs = (legL, legColor, shoeColor) => {
+    for (const side of [-1,1]) {
+      cy(s*0.16, s*0.1, legColor, 0, s*0.08, side*legL);
+      bl(s*0.24, s*0.1, s*0.18, shoeColor, s*0.05, s*0.05, side*legL);
+    }
+  };
+  const DARK = C255(60,40,40), SHOE = C255(80,50,30);
+
+  const col = C255(...spec.color);
+  switch (spec.id) {
+    case 'fry': { // Soggy Fry — red box, lip, stripe, 5 fries, ketchup
+      b(s*0.5, s*0.45, s*0.4, C255(220,45,45), 0, s*0.28, 0, {rough:0.9});
+      b(s*0.52, s*0.06, s*0.42, C255(255,245,235), 0, s*0.5, 0);
+      b(s*0.52, s*0.1, s*0.42, col, 0, s*0.32, 0);
+      const fryH = [0.5, 0.55, 0.6, 0.5, 0.45];
+      [-0.2,-0.1,0,0.1,0.2].forEach((lat, i) =>
+        b(s*0.09, s*fryH[i], s*0.09, C255(255,210,90), 0, s*0.62, lat*s, { rotZ: (i-2)*10*Math.PI/180 }));
+      bl(s*0.09, s*0.09, s*0.09, C255(220,40,40), 0, s*0.88, -s*0.2);
+      for (const lat of [-0.12, 0.14])
+        bl(s*0.07, s*0.1, s*0.07, C255(200,30,30), s*0.26, s*0.38, lat*s);
+      face(s*0.21, s*0.3);
+      arms(s*0.35, s*0.22, C255(220,45,45));
+      legs(s*0.12, DARK, SHOE); break; }
+    case 'noodle': { // Noodle Ned — bowl, rim, swirl, egg, steam, chopsticks
+      cy(s*0.35, s*0.8, C255(200,60,60), 0, s*0.2, 0);
+      cy(s*0.06, s*0.86, C255(160,40,40), 0, s*0.38, 0);
+      bl(s*0.75, s*0.3, s*0.75, col, 0, s*0.42, 0);
+      bl(s*0.3, s*0.15, s*0.3, C255(255,225,150), s*0.1, s*0.5, s*0.1);
+      bl(s*0.12, s*0.12, s*0.12, col, s*0.38, s*0.32, s*0.1);
+      bl(s*0.2, s*0.2, s*0.2, C255(255,250,240), s*0.08, s*0.52, -s*0.15);
+      bl(s*0.1, s*0.1, s*0.1, C255(255,170,30), s*0.13, s*0.56, -s*0.15);
+      for (const [fx,fy,fz] of [[-0.18,0.5,-0.05],[0.2,0.5,0.18]])
+        bl(s*0.06, s*0.06, s*0.06, C255(200,40,30), fx*s, fy*s, fz*s);
+      for (const [gx,gy,gz] of [[-0.05,0.52,0.22],[0.12,0.52,-0.22]])
+        cy(s*0.03, s*0.06, C255(80,200,90), gx*s, gy*s, gz*s);
+      bl(s*0.14, s*0.14, s*0.14, C255(255,255,255), 0, s*0.85, 0, {opacity:0.5});
+      bl(s*0.11, s*0.11, s*0.11, C255(255,255,255), -s*0.12, s*0.8, s*0.08, {opacity:0.45});
+      for (const side of [-1,1])
+        cy(s*0.75, s*0.05, C255(120,80,40), -s*0.1, s*0.65, side*s*0.12, { rotZ: 18*side*Math.PI/180 });
+      face(s*0.4, s*0.22);
+      arms(s*0.36, s*0.36, C255(200,60,60));
+      legs(s*0.16, DARK, SHOE); break; }
+    case 'dumpling': { // Dancing Dumpling — pleats, bow, tutu
+      bl(s*0.8, s*0.55, s*0.8, col, 0, s*0.32, 0, {rough:0.9});
+      for (const lat of [-0.18, 0, 0.18])
+        bl(s*0.12, s*0.12, s*0.12, C255(240,220,170), s*0.05, s*0.56, lat*s);
+      for (const side of [-1,1]) {
+        b(s*0.18, s*0.08, s*0.12, C255(255,120,170), 0, s*0.62, side*s*0.1);
+        bl(s*0.06, s*0.06, s*0.06, C255(255,120,170), s*0.36, s*0.32, side*s*0.42);
+      }
+      bl(s*0.1, s*0.1, s*0.1, C255(255,120,170), 0, s*0.62, 0);
+      cy(s*0.05, s*0.95, C255(255,150,200), 0, s*0.22, 0, {opacity:0.85});
+      cy(s*0.04, s*1.05, C255(255,180,210), 0, s*0.17, 0, {opacity:0.7});
+      face(s*0.4, s*0.35, { mouth: 'open', browTilt: 12 });
+      arms(s*0.35, s*0.36, col, 'up');
+      legs(s*0.15, col, C255(255,120,170)); break; }
+    case 'taco': { // Turbo Taco — shell fold, lettuce, tomato, cheese, jalapeno
+      bl(s*0.8, s*0.5, s*0.8, col, 0, s*0.3, 0, {rough:0.9});
+      b(s*0.5, s*0.08, s*0.7, C255(220,140,20), 0, s*0.52, 0);
+      bl(s*0.18, s*0.18, s*0.18, C255(90,200,90), 0, s*0.55, -s*0.15);
+      bl(s*0.18, s*0.18, s*0.18, C255(90,200,90), 0, s*0.55, s*0.2);
+      bl(s*0.16, s*0.16, s*0.16, C255(220,60,60), 0, s*0.58, s*0.05);
+      for (const lat of [-0.05, 0.15])
+        b(s*0.2, s*0.04, s*0.06, C255(255,210,80), s*0.05, s*0.56, lat*s, { rotY: 20*Math.PI/180 });
+      cy(s*0.05, s*0.14, C255(60,170,60), 0, s*0.6, -s*0.05);
+      bl(s*0.08, s*0.12, s*0.08, C255(200,40,20), s*0.3, s*0.28, -s*0.2);
+      bl(s*0.14, s*0.08, s*0.14, C255(255,250,245), s*0.12, s*0.58, s*0.28);
+      b(s*0.14, s*0.05, s*0.1, C255(140,220,80), -s*0.08, s*0.6, s*0.12, { rotY: 25*Math.PI/180 });
+      face(s*0.4, s*0.32, { mouth: 'smirk', browTilt: 6 });
+      arms(s*0.36, s*0.36, col);
+      legs(s*0.16, DARK, SHOE); break; }
+    case 'lasagna': { // Lord Lasagna — layered stack, drips, basil, chef hat
+      b(s*0.7, s*0.14, s*0.55, C255(255,230,180), 0, s*0.12, 0);
+      b(s*0.72, s*0.1, s*0.57, C255(200,50,40), 0, s*0.24, 0);
+      b(s*0.7, s*0.14, s*0.55, col, 0, s*0.36, 0);
+      b(s*0.68, s*0.12, s*0.53, C255(255,230,180), 0, s*0.47, 0, { rotY: 3*Math.PI/180 });
+      for (const lat of [-0.15, 0.15])
+        bl(s*0.1, s*0.1, s*0.1, C255(255,200,60), s*0.3, s*0.3, lat*s);
+      b(s*0.15, s*0.05, s*0.15, C255(60,160,60), 0, s*0.55, 0);
+      bl(s*0.09, s*0.09, s*0.09, C255(40,40,30), -s*0.12, s*0.56, -s*0.12);
+      bl(s*0.08, s*0.12, s*0.08, C255(255,200,60), s*0.3, s*0.3, -s*0.05);
+      cy(s*0.12, s*0.3, C255(255,255,255), 0, s*0.6, 0, {rough:0.95});
+      bl(s*0.28, s*0.2, s*0.28, C255(255,255,255), 0, s*0.7, 0, {rough:0.95});
+      for (const lat of [-0.08, 0.08])
+        bl(s*0.06, s*0.1, s*0.06, C255(235,235,235), 0, s*0.72, lat*s, {rough:0.95});
+      face(s*0.28, s*0.32, { browTilt: 5 });
+      arms(s*0.35, s*0.34, C255(255,230,180));
+      legs(s*0.16, DARK, SHOE); break; }
+    case 'queso': { // Queen Queso — wheel, rind, crown, sceptre
+      cy(s*0.35, s*0.85, col, 0, s*0.22, 0);
+      cy(s*0.08, s*0.88, C255(220,170,0), 0, s*0.22, 0);
+      for (const lat of [-0.15, 0.15])
+        bl(s*0.12, s*0.12, s*0.12, C255(220,170,0), s*0.38, s*0.2, lat*s);
+      cy(s*0.08, s*0.5, C255(255,215,0), 0, s*0.42, 0, {metal:0.7, rough:0.3});
+      for (const lat of [-0.12, 0, 0.12])
+        cy(s*0.16, s*0.08, C255(255,215,0), 0, s*0.48, lat*s, {metal:0.7, rough:0.3});
+      bl(s*0.1, s*0.1, s*0.1, C255(220,40,60), 0, s*0.52, 0);
+      cy(s*0.4, s*0.04, C255(255,215,0), s*0.02, s*0.22, s*0.48, {metal:0.7, rough:0.3});
+      bl(s*0.09, s*0.09, s*0.09, C255(220,40,60), s*0.02, s*0.44, s*0.48);
+      b(s*0.06, s*0.4, s*0.7, C255(180,30,50), -s*0.42, s*0.3, 0, { rotZ: -8*Math.PI/180, rough:0.9 });
+      for (const [bl2, bu] of [[-0.22, 0.17], [0, 0.11], [0.22, 0.17]])
+        bl(s*0.06, s*0.06, s*0.06, C255(255,215,0), s*0.43, s*bu, bl2*s, {metal:0.7, rough:0.3});
+      for (const side of [-1,1])
+        bl(s*0.06, s*0.06, s*0.06, C255(220,40,60), s*0.38, s*0.25, side*s*0.44);
+      face(s*0.42, s*0.25);
+      arms(s*0.36, s*0.38, col);
+      legs(s*0.16, DARK, SHOE); break; }
+    case 'kebab': { // King Kebab — metal skewer, meat, pepper, tomato, onion, flame
+      cy(s*0.95, s*0.06, C255(180,180,190), 0, s*0.5, 0, {metal:0.8, rough:0.25});
+      bl(s*0.5, s*0.5, s*0.5, col, 0, s*0.32, 0);
+      b(s*0.42, s*0.18, s*0.42, C255(80,180,80), 0, s*0.55, 0);
+      bl(s*0.42, s*0.42, s*0.42, C255(220,60,60), 0, s*0.75, 0);
+      for (const u of [0.45, 0.65])
+        cy(s*0.04, s*0.5, C255(255,250,240), 0, s*u, 0);
+      bl(s*0.14, s*0.14, s*0.14, C255(255,120,0), s*0.2, s*0.12, s*0.15, {neon:true});
+      b(s*0.08, s*0.55, s*0.5, C255(230,200,150), -s*0.28, s*0.35, 0, { rotZ: 10*Math.PI/180, rough:0.9 });
+      for (const u of [0.28, 0.38])
+        b(s*0.02, s*0.04, s*0.4, C255(90,40,20), s*0.26, s*u, 0, { rotX: 20*Math.PI/180 });
+      bl(s*0.12, s*0.12, s*0.12, C255(200,200,200), s*0.22, s*0.3, s*0.15, {opacity:0.4});
+      face(s*0.25, s*0.32, { browTilt: 5 });
+      arms(s*0.35, s*0.28, col);
+      legs(s*0.14, DARK, SHOE); break; }
+    case 'burger': { // Baron Burger — bun, patty, cheese, lettuce, tomato, sesame
+      cy(s*0.16, s*0.78, C255(220,170,110), 0, s*0.12, 0, {rough:0.9});
+      cy(s*0.16, s*0.82, col, 0, s*0.28, 0);
+      b(s*0.85, s*0.06, s*0.85, C255(255,200,60), 0, s*0.38, 0, { rotY: Math.PI/4 });
+      bl(s*0.1, s*0.1, s*0.1, C255(255,200,60), s*0.35, s*0.34, s*0.3);
+      bl(s*0.2, s*0.2, s*0.2, C255(90,200,90), s*0.3, s*0.42, -s*0.2);
+      bl(s*0.2, s*0.2, s*0.2, C255(90,200,90), s*0.3, s*0.42, s*0.2);
+      cy(s*0.06, s*0.7, C255(220,60,60), 0, s*0.44, 0);
+      bl(s*0.78, s*0.35, s*0.78, C255(230,180,120), 0, s*0.55, 0, {rough:0.9});
+      for (const lat of [-0.12, 0, 0.12])
+        bl(s*0.06, s*0.06, s*0.06, C255(255,245,220), s*0.15, s*0.72, lat*s);
+      cy(s*0.04, s*0.2, C255(90,170,70), s*0.2, s*0.5, -s*0.18);
+      cy(s*0.03, s*0.3, C255(255,250,240), s*0.1, s*0.36, -s*0.2);
+      bl(s*0.08, s*0.11, s*0.08, C255(255,215,40), s*0.36, s*0.32, -s*0.32);
+      for (const lat of [-0.2, 0.2])
+        bl(s*0.06, s*0.06, s*0.06, C255(255,245,220), -s*0.05, s*0.7, lat*s);
+      face(s*0.41, s*0.28, { browTilt: 5 });
+      arms(s*0.35, s*0.38, C255(230,180,120));
+      legs(s*0.16, DARK, SHOE); break; }
+    case 'ramen': { // The Eternal Ramen — bowl, broth, noodles, egg, narutomaki, steam
+      cy(s*0.32, s*0.9, col, 0, s*0.2, 0);
+      cy(s*0.06, s*0.94, C255(255,250,240), 0, s*0.36, 0);
+      bl(s*0.85, s*0.22, s*0.85, C255(255,160,60), 0, s*0.4, 0);
+      bl(s*0.5, s*0.2, s*0.5, C255(255,220,140), 0, s*0.48, 0);
+      bl(s*0.25, s*0.12, s*0.25, C255(255,230,160), s*0.15, s*0.52, s*0.1);
+      bl(s*0.22, s*0.22, s*0.22, C255(255,250,240), s*0.1, s*0.5, -s*0.15);
+      bl(s*0.12, s*0.12, s*0.12, C255(255,170,30), s*0.16, s*0.54, -s*0.15);
+      cy(s*0.08, s*0.16, C255(255,250,240), -s*0.15, s*0.5, s*0.15);
+      bl(s*0.07, s*0.07, s*0.07, C255(255,120,170), -s*0.15, s*0.54, s*0.15);
+      bl(s*0.16, s*0.16, s*0.16, C255(255,255,255), 0, s*0.85, 0, {opacity:0.5});
+      bl(s*0.12, s*0.12, s*0.12, C255(255,255,255), s*0.14, s*0.82, -s*0.1, {opacity:0.45});
+      b(s*0.04, s*0.3, s*0.25, C255(30,60,30), -s*0.2, s*0.55, -s*0.2, { rotY: 15*Math.PI/180 });
+      cy(s*0.06, s*0.24, C255(255,200,190), s*0.18, s*0.5, s*0.22);
+      b(s*0.16, s*0.05, s*0.06, C255(230,200,110), -s*0.05, s*0.52, s*0.28, { rotY: -20*Math.PI/180 });
+      bl(s*0.12, s*0.06, s*0.12, C255(200,50,20), -s*0.22, s*0.5, s*0.05);
+      for (const side of [-1,1])
+        cy(s*0.75, s*0.05, C255(90,60,40), -s*0.15, s*0.65, side*s*0.1, { rotZ: 15*side*Math.PI/180 });
+      face(s*0.45, s*0.22);
+      arms(s*0.36, s*0.4, col);
+      legs(s*0.18, DARK, SHOE); break; }
+  }
+
+  // mutation gem on top
+  if (spec.mutation && spec.mutation !== 'None')
+    bl(s*0.18, s*0.18, s*0.18, MUTATION_COLORS[spec.mutation], 0, s*0.95, 0, { neon: true });
+
+  // name label above the head (BillboardGui, StudsOffset s*1.15)
+  const accent = { Common:'#b4b4b4', Rare:'#50aaff', Epic:'#b45aff', Legendary:'#ffaa00', Mythic:'#ff3c78' }[spec.rarity];
+  const label = makeLabelSprite(spec.name, '$' + spec.price.toLocaleString('en-US') + ' · ' + spec.rarity, accent);
+  label.position.set(0, s*1.15, 0);
+  g.add(label);
+  return g;
+}
+
+// walkers on the belt (ground = belt top Y=2), facing +X, walking east
+const WALKERS = [
+  { id:'fry',      x:-30, s:3.3, rarity:'Common',    color:[255,196,66],  name:'Soggy Fry',         price:50 },
+  { id:'noodle',   x:-20, s:3.6, rarity:'Common',    color:[255,214,130], name:'Noodle Ned',        price:100 },
+  { id:'dumpling', x:-10, s:3.9, rarity:'Rare',      color:[255,240,200], name:'Dancing Dumpling',  price:300 },
+  { id:'taco',     x:  0, s:4.2, rarity:'Rare',      color:[255,170,40],  name:'Turbo Taco',        price:500 },
+  { id:'lasagna',  x: 10, s:4.5, rarity:'Epic',      color:[230,120,60],  name:'Lord Lasagna',      price:1500 },
+  { id:'queso',    x: 20, s:4.8, rarity:'Epic',      color:[255,215,0],   name:'Queen Queso',       price:2500 },
+  { id:'kebab',    x: 30, s:5.1, rarity:'Legendary', color:[180,60,60],   name:'King Kebab',        price:6000, mutation:'Golden' },
+  { id:'ramen',    x: 42, s:6.0, rarity:'Mythic',    color:[255,80,80],   name:'The Eternal Ramen', price:25000, mutation:'Diamond' },
+];
+for (const w of WALKERS) buildCharacter({ ...w, groundY: 2, z: 0 });
+// one bought snack standing on Base3 (yellow, north), facing the belt (+Z)
+buildCharacter({ id:'burger', x:15, z:-14, groundY: 1, s:5.4, rarity:'Legendary',
+  color:[150,90,40], name:'Baron Burger', price:10000, rotY: -Math.PI/2 });
+
+// ---------- player avatar (classic blocky) on Base2, facing the belt ----------
+const player = new THREE.Group();
+player.position.set(-18, 1, -15);
+scene.add(player);
+const pb = (w,h,d,c,x,y,z)=> box(w,h,d,c, x,y,z, {parent: player});
+pb(0.55, 1, 0.55, C255(164,189,71), -0.28, 0.5, 0);   // legs
+pb(0.55, 1, 0.55, C255(164,189,71),  0.28, 0.5, 0);
+pb(2, 2, 1, C255(13,105,172), 0, 2, 0);               // torso (blue)
+pb(0.55, 2, 0.55, C255(245,205,48), -1.28, 2, 0);     // arms (yellow)
+pb(0.55, 2, 0.55, C255(245,205,48),  1.28, 2, 0);
+pb(1.3, 1.2, 1.2, C255(245,205,48), 0, 3.6, 0);       // head (yellow)
+pb(0.25, 0.35, 0.06, C255(20,20,20), -0.3, 3.65, 0.62); // eyes on +Z face
+pb(0.25, 0.35, 0.06, C255(20,20,20),  0.3, 3.65, 0.62);
+
+// ---------- render ----------
+function render() { renderer.render(scene, camera); }
+render();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
