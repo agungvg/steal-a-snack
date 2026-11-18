@@ -10,6 +10,7 @@ local Workspace = game:GetService("Workspace")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local State = require(script.Parent.State)
 local Bases = require(script.Parent.Bases)
+local Effects = require(script.Parent.Effects)
 
 local Spawner = {}
 
@@ -52,6 +53,24 @@ function Spawner.spawnOne()
 	body.Position = Vector3.new(Config.CONVEYOR_START_X, Config.CONVEYOR_Y + size * 0.5, Config.CONVEYOR_Z)
 	body.Parent = model
 
+	-- Two eyes facing the way it walks, so the hop and the wobble read
+	-- as a character, not a rolling ball.
+	local eyes = {}
+	local eyeOffset = size * 0.22
+	for _, side in ipairs({ -1, 1 }) do
+		local eye = Instance.new("Part")
+		eye.Name = "Eye"
+		eye.Shape = Enum.PartType.Ball
+		eye.Size = Vector3.new(size * 0.22, size * 0.22, size * 0.22)
+		eye.Color = Color3.fromRGB(20, 20, 20)
+		eye.Material = Enum.Material.SmoothPlastic
+		eye.Anchored = true
+		eye.CanCollide = false
+		eye.Position = body.Position + Vector3.new(size * 0.48, size * 0.18, side * eyeOffset)
+		eye.Parent = model
+		table.insert(eyes, eye)
+	end
+
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "Label"
 	billboard.Size = UDim2.fromOffset(160, 64)
@@ -91,6 +110,9 @@ function Spawner.spawnOne()
 		price = pick.price,
 		rate = pick.rate * mutation.multiplier,
 		x = Config.CONVEYOR_START_X,
+		baseY = Config.CONVEYOR_Y + size * 0.5,
+		phase = math.random() * math.pi * 2,
+		eyes = eyes,
 	}
 	table.insert(walkers, walker)
 	return walker
@@ -150,6 +172,7 @@ function Spawner.tryBuy(player, uid)
 	}
 	Bases.placeOnBase(data, entry)
 	State.addOwned(data, entry)
+	Effects.burst(Bases.slotPosition(data.baseIndex, entry.slot), entry.color)
 	if Spawner.onBought then
 		Spawner.onBought(player)
 	end
@@ -190,7 +213,17 @@ function Spawner.start()
 				else
 					local body = walker.model.PrimaryPart
 					if body then
-						body.Position = Vector3.new(walker.x, Config.CONVEYOR_Y + walker.pick.size * 0.5, Config.CONVEYOR_Z)
+						-- A little hop as it walks: the bob makes the
+						-- belt feel alive instead of sliding statues.
+						local hop = math.abs(math.sin(now * 5 + walker.phase)) * 0.35
+						local pos = Vector3.new(walker.x, walker.baseY + hop, Config.CONVEYOR_Z)
+						body.Position = pos
+						local eyeOffset = walker.pick.size * 0.22
+						for eyeIndex, eye in ipairs(walker.eyes) do
+							local side = eyeIndex == 1 and -1 or 1
+							eye.Position = pos
+								+ Vector3.new(walker.pick.size * 0.48, walker.pick.size * 0.18, side * eyeOffset)
+						end
 					end
 				end
 			end

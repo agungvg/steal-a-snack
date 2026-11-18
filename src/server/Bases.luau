@@ -30,6 +30,8 @@ local SLOT_OFFSETS = {
 }
 
 local modelsByUid = {}
+local animated = {}
+local shields = {}
 local folder = nil
 
 local function getFolder()
@@ -169,7 +171,49 @@ function Bases.buildModel(entry, position)
 	model.PrimaryPart = body
 	model.Parent = getFolder()
 	modelsByUid[entry.uid] = model
+	animated[entry.uid] = { model = model, baseCFrame = body.CFrame, phase = math.random() * math.pi * 2 }
 	return model
+end
+
+-- Gentle idle bob for every snack standing on a base. One loop moves
+-- them all with a sine offset, so a full base visibly breathes.
+function Bases.start()
+	task.spawn(function()
+		while true do
+			task.wait(0.08)
+			local now = os.clock()
+			for _, anim in pairs(animated) do
+				if anim.model.Parent then
+					anim.model:PivotTo(anim.baseCFrame * CFrame.new(0, math.sin(now * 2 + anim.phase) * 0.15, 0))
+				end
+			end
+		end
+	end)
+end
+
+-- A translucent blue dome over a base while its lock is up, so a lock
+-- is visible in the world, not only on the owner's HUD.
+function Bases.setLockVisual(baseIndex, locked)
+	local center = Bases.CENTERS[baseIndex]
+	if not center then
+		return
+	end
+	local shield = shields[baseIndex]
+	if not shield then
+		shield = Instance.new("Part")
+		shield.Name = "LockShield" .. tostring(baseIndex)
+		shield.Shape = Enum.PartType.Ball
+		shield.Size = Vector3.new(26, 12, 20)
+		shield.Color = Color3.fromRGB(80, 160, 255)
+		shield.Material = Enum.Material.Neon
+		shield.Anchored = true
+		shield.CanCollide = false
+		shield.Transparency = 1
+		shield.Position = center + Vector3.new(0, 5, 0)
+		shield.Parent = Workspace
+		shields[baseIndex] = shield
+	end
+	shield.Transparency = locked and 0.85 or 1
 end
 
 function Bases.placeOnBase(data, entry)
@@ -189,6 +233,7 @@ function Bases.removeModel(uid)
 		model:Destroy()
 		modelsByUid[uid] = nil
 	end
+	animated[uid] = nil
 end
 
 function Bases.clearBase(data)

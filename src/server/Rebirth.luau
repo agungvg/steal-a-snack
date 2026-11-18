@@ -5,6 +5,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Effects = require(script.Parent.Effects)
 
 local Rebirth = {}
 
@@ -21,6 +22,10 @@ function Rebirth.tryRebirth(State, Bases, player)
 	table.clear(data.owned)
 	data.cash = Config.START_CASH
 	data.rebirths += 1
+	local center = Bases.baseCenter(data)
+	if center then
+		Effects.rebirthBurst(center + Vector3.new(0, 4, 0))
+	end
 	return true, "REBIRTH #" .. tostring(data.rebirths) .. "! Income x" .. tostring(Config.incomeMultiplier(data.rebirths)) .. " forever."
 end
 

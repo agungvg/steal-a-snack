@@ -6,6 +6,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Effects = require(script.Parent.Effects)
 
 local Steal = {}
 
@@ -30,6 +31,7 @@ function Steal.trySteal(State, Bases, thief, uid)
 				entry.slot = 0
 				Bases.placeOnBase(thiefData, entry)
 				State.addOwned(thiefData, entry)
+				Effects.burst(Bases.slotPosition(thiefData.baseIndex, entry.slot), entry.color)
 				if Steal.onStolen then
 					Steal.onStolen(thief, victim)
 				end

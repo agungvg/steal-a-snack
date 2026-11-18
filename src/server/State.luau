@@ -85,6 +85,7 @@ function State.snapshot(player, data)
 	for _, entry in ipairs(data.owned) do
 		table.insert(owned, {
 			uid = entry.uid,
+			id = entry.id,
 			name = entry.name,
 			rarity = entry.rarity,
 			rate = entry.rate,
