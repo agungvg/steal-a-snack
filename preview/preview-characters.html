@@ -61,7 +61,7 @@ function cyl(h, d, color, x,y,z, o={}) {
 
 // ---------- renderer / scene ----------
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true }); // preserveDrawingBuffer: true so print-to-PDF / screenshots capture the canvas instead of a blank frame
 renderer.setSize(1280, 720);
 renderer.setPixelRatio(1);
 renderer.outputEncoding = THREE.sRGBEncoding;
