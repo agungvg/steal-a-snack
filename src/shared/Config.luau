@@ -60,15 +60,15 @@ Config.ACTION_RANGE = 40
 -- The cast. price is what a brainrot costs on the belt; rate is the
 -- cash it earns every second once it is standing on your base.
 Config.BRAINROTS = {
-	{ id = "soggy_fry", name = "Soggy Fry", rarity = "Common", rate = 1, price = 50, color = Color3.fromRGB(255, 196, 66), size = 2.2 },
-	{ id = "noodle_ned", name = "Noodle Ned", rarity = "Common", rate = 2, price = 100, color = Color3.fromRGB(255, 214, 130), size = 2.4 },
-	{ id = "dancing_dumpling", name = "Dancing Dumpling", rarity = "Rare", rate = 5, price = 300, color = Color3.fromRGB(255, 240, 200), size = 2.6 },
-	{ id = "turbo_taco", name = "Turbo Taco", rarity = "Rare", rate = 8, price = 500, color = Color3.fromRGB(255, 170, 40), size = 2.8 },
-	{ id = "lord_lasagna", name = "Lord Lasagna", rarity = "Epic", rate = 15, price = 1500, color = Color3.fromRGB(230, 120, 60), size = 3.0 },
-	{ id = "queen_queso", name = "Queen Queso", rarity = "Epic", rate = 20, price = 2500, color = Color3.fromRGB(255, 215, 0), size = 3.2 },
-	{ id = "king_kebab", name = "King Kebab", rarity = "Legendary", rate = 40, price = 6000, color = Color3.fromRGB(180, 60, 60), size = 3.4 },
-	{ id = "baron_burger", name = "Baron Burger", rarity = "Legendary", rate = 60, price = 10000, color = Color3.fromRGB(150, 90, 40), size = 3.6 },
-	{ id = "eternal_ramen", name = "The Eternal Ramen", rarity = "Mythic", rate = 120, price = 25000, color = Color3.fromRGB(255, 80, 80), size = 4.0 },
+	{ id = "soggy_fry", name = "Soggy Fry", rarity = "Common", rate = 1, price = 50, color = Color3.fromRGB(255, 196, 66), size = 3.3 },
+	{ id = "noodle_ned", name = "Noodle Ned", rarity = "Common", rate = 2, price = 100, color = Color3.fromRGB(255, 214, 130), size = 3.6 },
+	{ id = "dancing_dumpling", name = "Dancing Dumpling", rarity = "Rare", rate = 5, price = 300, color = Color3.fromRGB(255, 240, 200), size = 3.9 },
+	{ id = "turbo_taco", name = "Turbo Taco", rarity = "Rare", rate = 8, price = 500, color = Color3.fromRGB(255, 170, 40), size = 4.2 },
+	{ id = "lord_lasagna", name = "Lord Lasagna", rarity = "Epic", rate = 15, price = 1500, color = Color3.fromRGB(230, 120, 60), size = 4.5 },
+	{ id = "queen_queso", name = "Queen Queso", rarity = "Epic", rate = 20, price = 2500, color = Color3.fromRGB(255, 215, 0), size = 4.8 },
+	{ id = "king_kebab", name = "King Kebab", rarity = "Legendary", rate = 40, price = 6000, color = Color3.fromRGB(180, 60, 60), size = 5.1 },
+	{ id = "baron_burger", name = "Baron Burger", rarity = "Legendary", rate = 60, price = 10000, color = Color3.fromRGB(150, 90, 40), size = 5.4 },
+	{ id = "eternal_ramen", name = "The Eternal Ramen", rarity = "Mythic", rate = 120, price = 25000, color = Color3.fromRGB(255, 80, 80), size = 6.0 },
 }
 
 Config.RARITY_ORDER = { "Common", "Rare", "Epic", "Legendary", "Mythic" }

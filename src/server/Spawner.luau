@@ -29,6 +29,7 @@ type Walker = {
 	baseY: number,
 	phase: number,
 	eyes: { BasePart },
+	disc: BasePart,
 }
 
 local walkers = {} :: { Walker }
@@ -79,7 +80,7 @@ function Spawner.spawnOne(): Walker?
 	local size = pick.size
 	local spawnPos = Vector3.new(Config.CONVEYOR_START_X, Config.CONVEYOR_Y + size * 0.5, Config.CONVEYOR_Z)
 
-	local model, body, eyes = CharacterFactory.build({
+	local model, body, eyes, disc = CharacterFactory.build({
 		name = pick.name,
 		color = mutation.color ~= Color3.fromRGB(255, 255, 255) and mutation.color or pick.color,
 		size = size,
@@ -110,6 +111,7 @@ function Spawner.spawnOne(): Walker?
 		baseY = Config.CONVEYOR_Y + size * 0.5,
 		phase = math.random() * math.pi * 2,
 		eyes = eyes,
+		disc = disc,
 	}
 	table.insert(walkers, walker)
 
@@ -244,6 +246,10 @@ function Spawner.start()
 						local hop = math.abs(math.sin(now * 5 + walker.phase)) * 0.35
 						local pos = Vector3.new(walker.x, walker.baseY + hop, Config.CONVEYOR_Z)
 						body.Position = pos
+						-- The shadow disc rides the belt surface under
+						-- the body (Position keeps its flat orientation).
+						walker.disc.Position =
+							Vector3.new(walker.x, Config.CONVEYOR_Y - 0.4, Config.CONVEYOR_Z)
 						local eyeOffset = walker.pick.size * 0.22
 						for eyeIndex, eye in ipairs(walker.eyes) do
 							local side = eyeIndex == 1 and -1 or 1

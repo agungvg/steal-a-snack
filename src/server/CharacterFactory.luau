@@ -27,7 +27,7 @@ export type CharacterOptions = {
 	parent: Instance,
 }
 
-function CharacterFactory.build(opts: CharacterOptions): (Model, BasePart, { BasePart })
+function CharacterFactory.build(opts: CharacterOptions): (Model, BasePart, { BasePart }, BasePart)
 	local size = opts.size
 
 	local model = Instance.new("Model")
@@ -65,16 +65,34 @@ function CharacterFactory.build(opts: CharacterOptions): (Model, BasePart, { Bas
 		table.insert(eyes, eye)
 	end
 
+	-- A flat shadow disc on the belt under the body. It is the snack's
+	-- ground presence: a dark ring the eye catches even at a distance,
+	-- so the snack never reads as a floating label alone. The cylinder
+	-- axis is X by default; rotate it flat (axis up) once here, then
+	-- only its Position moves (Position keeps the orientation).
+	local disc = Instance.new("Part")
+	disc.Name = "Shadow"
+	disc.Shape = Enum.PartType.Cylinder
+	disc.Size = Vector3.new(0.2, size * 1.6, size * 1.6)
+	disc.Color = Color3.fromRGB(25, 25, 30)
+	disc.Material = Enum.Material.SmoothPlastic
+	disc.Transparency = 0.2
+	disc.Anchored = true
+	disc.CanCollide = false
+	disc.CFrame = CFrame.new(opts.position - Vector3.new(0, size * 0.5 + 0.4, 0))
+		* CFrame.Angles(0, 0, math.rad(90))
+	disc.Parent = model
+
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "Label"
 	billboard.Size = opts.billboardSize
-	billboard.StudsOffset = Vector3.new(0, size * 0.9, 0)
+	billboard.StudsOffset = Vector3.new(0, size * 1.25, 0)
 	billboard.AlwaysOnTop = true
 	billboard.Parent = body
 
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 0.35
+	label.BackgroundTransparency = 0.6
 	label.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	label.Font = Enum.Font.FredokaOne
@@ -94,7 +112,7 @@ function CharacterFactory.build(opts: CharacterOptions): (Model, BasePart, { Bas
 
 	model.PrimaryPart = body
 	model.Parent = opts.parent
-	return model, body, eyes
+	return model, body, eyes, disc
 end
 
 return CharacterFactory
