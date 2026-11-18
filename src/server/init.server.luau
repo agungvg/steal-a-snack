@@ -63,6 +63,19 @@ Players.PlayerAdded:Connect(function(player: Player)
 		greeting = "Welcome back! Your snacks and cash were restored."
 	end
 	syncPlayer(player, greeting)
+	-- Land the player on their plot facing the belt the moment their
+	-- character loads (and again on every respawn), so the first frame
+	-- is the game, not an empty field.
+	local function land()
+		Bases.teleportToBase(player, data)
+	end
+	if player.Character then
+		land()
+	end
+	player.CharacterAdded:Connect(function(_character: Model)
+		task.wait(0.2)
+		land()
+	end)
 end)
 
 Players.PlayerRemoving:Connect(function(player: Player)

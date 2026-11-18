@@ -26,10 +26,7 @@ type Walker = {
 	price: number,
 	rate: number,
 	x: number,
-	baseY: number,
 	phase: number,
-	eyes: { BasePart },
-	disc: BasePart,
 }
 
 local walkers = {} :: { Walker }
@@ -78,11 +75,17 @@ function Spawner.spawnOne(): Walker?
 	local pick, mutation = rollBrainrot()
 	local uid = nextUid()
 	local size = pick.size
-	local spawnPos = Vector3.new(Config.CONVEYOR_START_X, Config.CONVEYOR_Y + size * 0.5, Config.CONVEYOR_Z)
+	-- Ground point on the belt top: the factory builds the whole
+	-- character standing on this point, and the walker is moved with
+	-- one PivotTo per tick, so it can never fall apart.
+	local spawnPos = Vector3.new(Config.CONVEYOR_START_X, Config.BELT_TOP_Y, Config.CONVEYOR_Z)
 
-	local model, body, eyes, disc = CharacterFactory.build({
+	local model, body = CharacterFactory.build({
+		id = pick.id,
 		name = pick.name,
 		color = mutation.color ~= Color3.fromRGB(255, 255, 255) and mutation.color or pick.color,
+		rarity = pick.rarity,
+		mutation = mutation.name,
 		size = size,
 		position = spawnPos,
 		labelText = pick.name
@@ -108,10 +111,7 @@ function Spawner.spawnOne(): Walker?
 		price = pick.price,
 		rate = pick.rate * mutation.multiplier,
 		x = Config.CONVEYOR_START_X,
-		baseY = Config.CONVEYOR_Y + size * 0.5,
 		phase = math.random() * math.pi * 2,
-		eyes = eyes,
-		disc = disc,
 	}
 	table.insert(walkers, walker)
 
@@ -174,7 +174,7 @@ function Spawner.tryBuy(player: Player, uid: any): (boolean, string)
 	if not where then
 		return false, "You need to be alive and in the world to buy."
 	end
-	local walkerPos = Vector3.new(walker.x, walker.baseY, Config.CONVEYOR_Z)
+	local walkerPos = Vector3.new(walker.x, Config.BELT_TOP_Y, Config.CONVEYOR_Z)
 	if (where - walkerPos).Magnitude > Config.ACTION_RANGE then
 		return false, "Too far from that snack. Walk up to the belt!"
 	end
@@ -239,24 +239,15 @@ function Spawner.start()
 					walker.model:Destroy()
 					table.remove(walkers, index)
 				else
-					local body = walker.model.PrimaryPart
-					if body then
-						-- A little hop as it walks: the bob makes the
-						-- belt feel alive instead of sliding statues.
-						local hop = math.abs(math.sin(now * 5 + walker.phase)) * 0.35
-						local pos = Vector3.new(walker.x, walker.baseY + hop, Config.CONVEYOR_Z)
-						body.Position = pos
-						-- The shadow disc rides the belt surface under
-						-- the body (Position keeps its flat orientation).
-						walker.disc.Position =
-							Vector3.new(walker.x, Config.CONVEYOR_Y - 0.4, Config.CONVEYOR_Z)
-						local eyeOffset = walker.pick.size * 0.22
-						for eyeIndex, eye in ipairs(walker.eyes) do
-							local side = eyeIndex == 1 and -1 or 1
-							eye.Position = pos
-								+ Vector3.new(walker.pick.size * 0.48, walker.pick.size * 0.18, side * eyeOffset)
-						end
-					end
+					-- One PivotTo moves the whole character: a little
+					-- hop plus a side-to-side waddle, so the belt
+					-- reads as alive instead of sliding statues.
+					local hop = math.abs(math.sin(now * 5 + walker.phase)) * 0.35
+					local waddle = math.sin(now * 5 + walker.phase) * 0.08
+					walker.model:PivotTo(
+						CFrame.new(walker.x, Config.BELT_TOP_Y + hop, Config.CONVEYOR_Z)
+							* CFrame.Angles(waddle, 0, 0)
+					)
 				end
 			end
 		end

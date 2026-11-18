@@ -47,7 +47,9 @@ Config.CONVEYOR_SPEED = 6
 Config.CONVEYOR_START_X = -64
 Config.CONVEYOR_END_X = 64
 Config.CONVEYOR_Z = 0
-Config.CONVEYOR_Y = 2.5
+-- The belt's top surface: the ground every walker stands on. The belt
+-- part is centred at Y=1 and 2 studs tall, so its top is Y=2.
+Config.BELT_TOP_Y = 2
 Config.SPAWN_INTERVAL = 7
 Config.MAX_WALKERS = 10
 

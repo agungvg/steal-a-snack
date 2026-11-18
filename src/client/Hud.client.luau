@@ -143,7 +143,15 @@ local function refreshOwned(owned: any)
 	end
 	local y = 8
 	for _, entry in ipairs(owned) do
-		local line = makeLabel(ownedList, "Owned" .. entry.uid, UDim2.fromOffset(8, y), UDim2.fromOffset(264, 34), 18)
+		-- A colour chip so each snack reads at a glance, not just as text.
+		local chip = Instance.new("Frame")
+		chip.Name = "Chip" .. entry.uid
+		chip.Position = UDim2.fromOffset(8, y + 5)
+		chip.Size = UDim2.fromOffset(24, 24)
+		chip.BackgroundColor3 = entry.color or Color3.fromRGB(255, 255, 255)
+		chip.BorderSizePixel = 0
+		chip.Parent = ownedList
+		local line = makeLabel(ownedList, "Owned" .. entry.uid, UDim2.fromOffset(40, y), UDim2.fromOffset(232, 34), 18)
 		line.Text = entry.name .. " (" .. entry.rarity .. (entry.mutation ~= "None" and " " .. entry.mutation or "") .. ")  $" .. tostring(entry.rate * entry.multiplier) .. "/s"
 		line.BackgroundTransparency = 1
 		y += 38
@@ -214,6 +222,14 @@ GameSync.OnClientEvent:Connect(function(state: any)
 end)
 
 WaveAlert.OnClientEvent:Connect(function(message: string)
+	-- A rare spawn is good news, not danger: gold banner, longer read.
+	if string.sub(message, 1, 11) == "RARE SPAWN!" then
+		waveLabel.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
+		waveLabel.TextColor3 = Color3.fromRGB(30, 30, 30)
+	else
+		waveLabel.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+		waveLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	end
 	waveLabel.Text = message
 	waveLabel.Visible = true
 	waveHideAt = os.clock() + 12

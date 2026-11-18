@@ -117,6 +117,7 @@ export type OwnedSnapshot = {
 	rate: number,
 	multiplier: number,
 	mutation: string,
+	color: Color3,
 }
 
 -- The snapshot the server sends the HUD. notice / nextWaveIn /
@@ -151,6 +152,7 @@ function State.snapshot(player: Player, data: PlayerData): Snapshot
 			rate = entry.rate,
 			multiplier = entry.multiplier,
 			mutation = entry.mutation,
+			color = entry.color,
 		})
 	end
 	return {

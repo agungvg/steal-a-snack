@@ -4,6 +4,12 @@
 -- the "am I home?" test the Hunger Wave uses. Each base also carries a
 -- floating name label, so a screenshot shows at a glance whose base is
 -- whose -- and whether it is locked.
+--
+-- Layout (top-creator reference: the original Steal a Brainrot): the
+-- plots adjoin the belt -- their inner edge is a short walk from the
+-- conveyor, so from your base the snacks walk past your front door.
+-- A player is teleported onto their plot facing the belt the moment
+-- they spawn, so the first frame is the game, not an empty field.
 
 --!strict
 
@@ -16,24 +22,28 @@ local Bases = {}
 
 Bases.Clicked = nil :: ((Player, string) -> ())?
 
+-- Plot centres: two rows of four, inner edge a short walk from the
+-- belt (belt edge Z=+/-5, plot inner edge Z=+/-8). Y=1 is the plot
+-- platform's top surface.
 Bases.CENTERS = {
-	Vector3.new(-45, 1, -32),
-	Vector3.new(-15, 1, -32),
-	Vector3.new(15, 1, -32),
-	Vector3.new(45, 1, -32),
-	Vector3.new(-45, 1, 32),
-	Vector3.new(-15, 1, 32),
-	Vector3.new(15, 1, 32),
-	Vector3.new(45, 1, 32),
+	Vector3.new(-45, 1, -14),
+	Vector3.new(-15, 1, -14),
+	Vector3.new(15, 1, -14),
+	Vector3.new(45, 1, -14),
+	Vector3.new(-45, 1, 14),
+	Vector3.new(-15, 1, 14),
+	Vector3.new(15, 1, 14),
+	Vector3.new(45, 1, 14),
 }
 
+-- Six slots per plot, 2 rows x 3 columns on a 22x12 platform.
 local SLOT_OFFSETS = {
-	Vector3.new(-7, 0, -4),
-	Vector3.new(0, 0, -4),
-	Vector3.new(7, 0, -4),
-	Vector3.new(-7, 0, 4),
-	Vector3.new(0, 0, 4),
-	Vector3.new(7, 0, 4),
+	Vector3.new(-7, 0, -3),
+	Vector3.new(0, 0, -3),
+	Vector3.new(7, 0, -3),
+	Vector3.new(-7, 0, 3),
+	Vector3.new(0, 0, 3),
+	Vector3.new(7, 0, 3),
 }
 
 local modelsByUid = {} :: { [string]: Model }
@@ -142,12 +152,15 @@ function Bases.getFreeSlot(data: State.PlayerData): number?
 	return nil
 end
 
+-- The ground point a slot's character stands on: the plot platform's
+-- top surface. The factory builds the whole character upward from
+-- this point, so a tall snack can never sink into its plot.
 function Bases.slotPosition(baseIndex: number, slot: number): Vector3
 	local center = Bases.CENTERS[baseIndex]
 	if not center then
 		return Vector3.new(0, 2, 0)
 	end
-	return center + SLOT_OFFSETS[slot] + Vector3.new(0, 1.5, 0)
+	return center + SLOT_OFFSETS[slot]
 end
 
 function Bases.isInsideBase(player: Player, data: State.PlayerData): boolean
@@ -164,20 +177,48 @@ function Bases.isInsideBase(player: Player, data: State.PlayerData): boolean
 		return false
 	end
 	local pos = root.Position
-	return math.abs(pos.X - center.X) <= 11 and math.abs(pos.Z - center.Z) <= 8
+	return math.abs(pos.X - center.X) <= 11 and math.abs(pos.Z - center.Z) <= 6
 end
 
 function Bases.baseCenter(data: State.PlayerData): Vector3?
 	return Bases.CENTERS[data.baseIndex]
 end
 
+-- Puts a player on their plot, facing the belt. Called the moment
+-- their character loads, so nobody ever spawns staring at an empty
+-- field: the first frame is their base with the conveyor in front.
+function Bases.teleportToBase(player: Player, data: State.PlayerData)
+	local center = Bases.CENTERS[data.baseIndex]
+	if not center then
+		return
+	end
+	local character = player.Character
+	if not character then
+		return
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+	-- A south plot (Z>0) faces north (-Z); a north plot faces south.
+	-- A CFrame with no rotation already faces -Z.
+	local target = CFrame.new(center + Vector3.new(0, 3, 0))
+	if center.Z < 0 then
+		target = target * CFrame.Angles(0, math.pi, 0)
+	end
+	root.CFrame = target
+end
+
 -- Builds the visible snack character through the shared factory: a
--- coloured ball body, two eyes facing the belt, and a floating label
--- with its name, rarity, rate and mutation. Clicking it tries a steal.
+-- chunky character with a face, standing on its slot's ground point
+-- and facing the belt. Clicking it tries a steal.
 function Bases.buildModel(entry: State.OwnedEntry, position: Vector3): Model
-	local model, body, _eyes = CharacterFactory.build({
+	local model = CharacterFactory.build({
+		id = entry.id,
 		name = entry.name,
 		color = entry.color,
+		rarity = entry.rarity,
+		mutation = entry.mutation,
 		size = entry.size,
 		position = position,
 		labelText = entry.name
@@ -198,7 +239,9 @@ function Bases.buildModel(entry: State.OwnedEntry, position: Vector3): Model
 	})
 
 	modelsByUid[entry.uid] = model
-	animated[entry.uid] = { model = model, baseCFrame = body.CFrame, phase = math.random() * math.pi * 2 }
+	-- The bob pivots on the model's ground point, so the whole
+	-- character breathes up and down without sinking or floating.
+	animated[entry.uid] = { model = model, baseCFrame = model:GetPivot(), phase = math.random() * math.pi * 2 }
 	return model
 end
 
